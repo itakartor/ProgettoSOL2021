@@ -9,7 +9,7 @@ typedef struct _Node { //questo non è un passaggio ulteriore inutile??
 } Node;
 
 
-typedef struct _CodaComandi {
+typedef struct _NodoComandi {
   char cmd;
   char* name;
   int n;
