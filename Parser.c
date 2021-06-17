@@ -98,10 +98,75 @@ int arg_w(char* optarg, Queue *q)
             printQueue(q);
 
             free(arg);
-            free(dirname);  
+            free(dirname);
+            return 0;  
+}
+int arg_W(char* optarg, Queue* q)
+{
+        //printf("Sto guardando gli argomenti di -l\n");
+
+        char* arg = malloc(sizeof(char) * strlen(optarg));
+        strncpy(arg, optarg, strlen(optarg));
+
+        char* save = NULL;
+        char* token = strtok_r(arg, ",", &save); // Attenzione: l’argomento stringa viene modificato!
+        while(token) {
+                //printf("%s\n", token);
+                insert(&q, 'W', token, 0);       //inserisco tanti comandi in coda quanti sono i file del comando -W file1,[file2]
+                token = strtok_r(NULL, ",", &save);
+            }
+        free(arg);
+        printQueue(q);
+        //printf("\n\n\n");               
+        return 0;
 }
 
-int parsel(char* argv,int argc, int p)
+int arg_R(char* argv[],int argc,Queue* q)
+{
+        //R può avere opzionalmente una opzione, che è messa quindi facoltativa e parsata a parte
+        printf("guardo R\n");
+        int nfacoltativo = 0;
+        char* nextstring = NULL; //la stringa seguente a -R passata da riga di comando
+        if(optind != argc)      //se -R non è l'ultimo argomento passato
+        {       
+                nextstring = strdup(argv[optind - 1]);
+                //fprintf(stderr, "indice optind ->%d   \n",optind);
+                //fprintf(stderr, "ci sono argomenti -> %s  \n",nextstring);
+        }
+        else
+        {
+                fprintf(stderr, "non ci sono argomenti  \n");
+        }
+        if(nextstring != NULL && nextstring[0] != '-') 
+        {       //nextstring non è un comando, bisogna controllare se è un numero o una stringa
+                if(isNumber(nextstring, &nfacoltativo)) 
+                {
+                        fprintf(stderr,"sto guardando il numero  \n");
+                        nfacoltativo = atoi(nextstring);
+                }
+                else 
+                {       //non è un numero né un parametro, deve dare errore
+                        fprintf(stderr, "FATAL ERROR: number is required\n");
+                        exit(EXIT_FAILURE);
+                }
+        }
+        //printQueue(q);
+        //printf("\n\n\n");
+        //printf("nfacoltativo ---->%d \n",nfacoltativo);
+        insert(&q, 'R', NULL, nfacoltativo);
+        //sleep(1);
+        //printf("caso R %d\n", nfacoltativo);
+        //printQueue(q);
+        return 0;    
+}
+int arg_d(char* optarg, Queue* q)
+{
+        fprintf(stderr,"siamo alla d\n");
+        insert(&q,'d',optarg, 0);
+        printQueue(q);
+        return 0;   
+}
+int parsel(char* argv[],int argc, int p, Queue* q)
 {
     int opt;
     while ((opt = getopt(argc,argv, "hf:w:W:Rd:")) != -1) {
@@ -110,19 +175,19 @@ int parsel(char* argv,int argc, int p)
                 arg_h();  //messaggio di help
                 break;
         case 'f': 
-                arg_f(optarg);  //manda il comando nella coda
+                arg_f(optarg, q);  //manda il comando nella coda
                 break;
         case 'w': 
-                arg_w(optarg);  //tokenizzare la stringa per suddividere le richieste dei vari file -w file1,[file2]
+                arg_w(optarg, q);  //tokenizzare la stringa per suddividere le richieste dei vari file -w cartella,[n=0]
                 break;
         case 'W': 
-                arg_W(optarg);  //
+                arg_W(optarg, q);  //tokenizzo la stringa per suddividere la richiesta -W file1,[file2] per ogni file 
                 break;
         case 'R':
-                arg_R();
+                arg_R(argv,argc, q);
                 break;
         case 'd':
-                arg_d();
+                arg_d(optarg, q);
                 break;
         case ':': {
         printf("l'opzione '-%c' richiede un argomento\n", optopt);
