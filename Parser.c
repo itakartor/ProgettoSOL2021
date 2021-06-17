@@ -164,10 +164,30 @@ int arg_d(char* optarg, Queue* q)
         printQueue(q);
         return 0;   
 }
+int arg_t(char* optarg, Queue* q) // controllo se l'argomento è un numero?
+{
+        return 0;
+}
+int arg_l(char* optarg, Queue* q)
+{
+        return 0;
+}
+int arg_u(char* optarg, Queue* q)
+{
+        return 0;
+}
+int arg_c(char* optarg, Queue* q)
+{
+        return 0;
+}
+int arg_p()
+{
+        return 0;
+}
 int parsel(char* argv[],int argc, int p, Queue* q)
 {
     int opt;
-    while ((opt = getopt(argc,argv, "hf:w:W:Rd:")) != -1) {
+    while ((opt = getopt(argc,argv, "hf:w:W:Rd:t:l:u:c:p")) != -1) {
         switch(opt) {
         case 'h': 
                 arg_h();  //messaggio di help
@@ -187,6 +207,21 @@ int parsel(char* argv[],int argc, int p, Queue* q)
         case 'd':
                 arg_d(optarg, q);
                 break;
+        case 't':
+                arg_t(optarg, q);
+                break;
+        case 'l':
+                arg_l(optarg, q);
+                break;
+        case 'u':
+                arg_u(optarg, q);
+                break;
+        case 'c':
+                arg_c(optarg, q);
+                break;
+        case 'p':
+                arg_p();
+                break;
         case ':': {
         printf("l'opzione '-%c' richiede un argomento\n", optopt);
         } break;
@@ -204,6 +239,6 @@ int parsel(char* argv[],int argc, int p, Queue* q)
 
 int main(int argc, char* argv[])
 {
-        
+
         return 0;
 }
