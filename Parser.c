@@ -3,12 +3,13 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <getopt.h>
-// numero delle opzioni che voglio gestire
-#define NOPTIONS       4
+
+#include "queue.h" //ho incluso la definizione di coda
+
 // limite sulla lunghezza della stringa passata come argomento
 #define MY_ARGV_MAX  512
 
-int isNumber(const char* s, long* n) {
+int isNumber(const char* s, int* n) {
   if (s==NULL) return 1;
   if (strlen(s)==0) return 1;
   char* e = NULL;
@@ -21,11 +22,6 @@ int isNumber(const char* s, long* n) {
   }
   return 1;   // non e' un numero
 }
-
-int arg_W(optarg)
-{
-        return 0;
-} 
 
 int arg_h()
 {
@@ -49,6 +45,8 @@ int arg_h()
 int arg_f(char* optarg, Queue *q) 
 {
         //devo inserire il comando nella coda
+        insert(&q, 'f', optarg, 0);
+        return 0;
 }
 
 int arg_w(char* optarg, Queue *q)
@@ -206,5 +204,6 @@ int parsel(char* argv[],int argc, int p, Queue* q)
 
 int main(int argc, char* argv[])
 {
-    return 0;
+        
+        return 0;
 }
