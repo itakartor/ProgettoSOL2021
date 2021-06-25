@@ -1,0 +1,6 @@
+//inizio
+spazio 10
+numeroFile 100
+sockName mysock
+numWorkers 5
+//fine
