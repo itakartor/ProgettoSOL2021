@@ -155,22 +155,27 @@ int arg_d(char* optarg, Queue* q)
 }
 int arg_t(char* optarg, Queue* q) // controllo se l'argomento è un numero?
 {
+        insert(&q,'t',optarg, 0);
         return 0;
 }
 int arg_l(char* optarg, Queue* q)
 {
+        insert(&q,'l',optarg, 0);
         return 0;
 }
 int arg_u(char* optarg, Queue* q)
 {
+        insert(&q,'u',optarg, 0);
         return 0;
 }
 int arg_c(char* optarg, Queue* q)
 {
+        insert(&q,'c',optarg, 0);
         return 0;
 }
-int arg_p()
+int arg_p(Queue* q)
 {
+        insert(&q,'p',NULL, 0);
         return 0;
 }
 int parsel(char* argv[],int argc, int p, Queue* q)
@@ -209,7 +214,7 @@ int parsel(char* argv[],int argc, int p, Queue* q)
                 arg_c(optarg, q);
                 break;
         case 'p':
-                arg_p();
+                arg_p(q);
                 break;
         case ':': {
         printf("l'opzione '-%c' richiede un argomento\n", optopt);
@@ -221,13 +226,4 @@ int parsel(char* argv[],int argc, int p, Queue* q)
         }
     }
     return 0;
-}
-
-
-
-
-int main(int argc, char* argv[])
-{
-
-        return 0;
 }

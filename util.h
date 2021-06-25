@@ -18,6 +18,13 @@
 
 #include "queue.h"
 
+#define SYSCALL_EXIT(name, r, sc, str, ...)	\
+    if ((r=sc) == -1) {				\
+	perror(#name);				\
+	int errno_copy = errno;			\
+	exit(errno_copy);			\
+    }
+
 
 static inline int readn(long fd, void *buf, size_t size) {
     size_t left = size;
@@ -79,3 +86,4 @@ int isNumber(const char* s, int* n) {
   }
   return 1;   // non e' un numero
 }
+

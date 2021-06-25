@@ -19,12 +19,6 @@
 #include "queue.h"
 #include "util.h"
 
-
-
-
-//"nomeInfo valore"
-//"spazio 1000"
-//"numeroFIle 100"
 #define MAXBUFFER 1000
 #define MAXSTRING 100
 #define CONFIGFILE "config.txt"
@@ -191,14 +185,13 @@ int main(int argc, char* argv[]) {
    pthread_t t;
     if(pthread_create(&t, NULL, threadF, NULL) != 0)
     {
-        fprintf(stderr, "pthread_create failed (Consumer)\n");
+        fprintf(stderr, "pthread_create failed server\n");
     }
   /*pthread_t *t = malloc(sizeof(pthread_t) * numWorkers); //array dei thread
   for(int i = 0; i < numWorkers; i++) {
     pthread_create(&t[i], NULL, threadF, NULL);
     //sleep(1);
   }*/
-
 
   int listenfd;
 
@@ -237,7 +230,7 @@ int main(int argc, char* argv[]) {
 
 // cerchiamo di capire da quale fd abbiamo ricevuto una richiesta
     for(int i=0; i <= fdmax; i++) {
-      //fprintf(stderr, "ciao\n");
+
       if (FD_ISSET(i, &tmpset)) {
         long connfd;
         if (i == listenfd) { // e' una nuova richiesta di connessione
@@ -249,7 +242,7 @@ int main(int argc, char* argv[]) {
           continue;
         }
         connfd = i;  // e' una nuova richiesta da un client già connesso
-
+        // se non ci sono richieste come faccio a non fargli fare niente?
   // eseguo il comando e se c'e' un errore lo tolgo dal master set
         //if (cmd(connfd) < 0) {
         /*if (-1 < 0) {
@@ -259,9 +252,9 @@ int main(int argc, char* argv[]) {
           if (connfd == fdmax)
             fdmax = updatemax(set, fdmax);
         }*/
-        //fprintf(stderr, "ciao1 %ld\n", connfd);
+        //parser dei comandi + inserimento delle richieste in una coda dove possano accedere 
+        //i worker
         //push(&queueClient, &connfd);
-        //fprintf(stderr, "ciao2\n");
         //printf("inserito\n");
       }
     }
