@@ -12,7 +12,6 @@
 
 Queue* initQueue() { //inizializza una coda vuota
   Queue *q = malloc(sizeof(Queue));
-  //Node n = malloc(sizeof(Node));
   q->head = NULL;
   q->tail = NULL;
   q->len = 0;

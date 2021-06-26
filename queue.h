@@ -3,17 +3,28 @@
 
 #include <pthread.h>
 
-typedef struct _Node { //questo non è un passaggio ulteriore inutile??
+typedef struct _Node {
     void*           data;
     struct _Node*    next;
 } Node;
-
 
 typedef struct _NodoComandi {
   char cmd;
   char* name;
   int n;
 } NodoComando;
+
+typedef struct _comandoclient {
+  char comando;
+  char* parametro;
+  long connfd;
+} ComandoClient;
+
+typedef struct msg {
+    int len;
+    char comando;    //lunghezza del messaggio
+    char *arg;  //messaggio
+} msg_t;
 /**
 *
 */

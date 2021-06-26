@@ -36,6 +36,7 @@ char* SockName = NULL;
 Queue *queueClient; //coda dei client che fanno richieste
 
 static pthread_mutex_t mutexQueueClient = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t condQueueClient = PTHREAD_COND_INITIALIZER;
 
 typedef struct _file {
   char* nome;
@@ -44,15 +45,10 @@ typedef struct _file {
   long length; //per fare la read e la write, meglio se memorizzato
 } File;
 
-typedef struct msg {
-    int len;    //lunghezza del messaggio
-    char *str;  //messaggio
-} msg_t;
 
 void cleanup() { //cancellare il collegamento
   unlink(SockName);
 }
-
 
 void parser(void) {
   char* a = NULL;
@@ -62,39 +58,36 @@ void parser(void) {
 
   char* buffer = malloc(sizeof(char) * MAXBUFFER);
   FILE* p;
-  //fprintf(stderr,"NON abbiamo aperto il file\n");
-  if((p = fopen(CONFIGFILE, "r")) == NULL) {
-        //gestione dell'errore
+  if((p = fopen(CONFIGFILE, "r")) == NULL) 
+  {
+    //gestione dell'errore
     perror("fopen");
   }
-  //fprintf(stderr, "abbiamo aperto il file\n");
-  while(fgets(buffer, MAXBUFFER, p)) {
-    //fprintf(stderr, "ecco il buffer: %s\n", buffer);
-        //ora facciamo il parser della singola riga
-
-            //tokenizzo la stringa e vedo il numero di virgole
+  while(fgets(buffer, MAXBUFFER, p)) 
+  {
+    //ora facciamo il parser della singola riga
+    //tokenizzo la stringa e vedo il numero di virgole
     save = NULL;
     token = strtok_r(buffer, " ",  &save);
     char** tmp = malloc(sizeof(char*) * 2);
     i = 0;
     while(token) {
-      //fprintf(stderr, "sto processando %s\n", token);
       tmp[i] = malloc(sizeof(char) * MAXSTRING);
       strncpy(tmp[i], token, strlen(token) - i); //se è il secondo elemento (i = i) non deve prendere il newline finale,
       token = strtok_r(NULL, " ", &save);
       i++;
     }
 
-    //fprintf(stderr, "Array: %s %s \n", tmp[0], tmp[1]);
-
-    if(strcmp(tmp[0], SPAZIO) == 0) {
-                //le due stringhe sono uguali
-                //fprintf(stderr,"questo è il primo arg %s\n",tmp[1]);
-      //fprintf(stderr,"questo è il risultato dello spazio %d\n", isNumber(tmp[1],&spazio));
-      if(!isNumber(tmp[1],&spazio)) {
+    if(strcmp(tmp[0], SPAZIO) == 0) 
+    {
+      //le due stringhe sono uguali
+      if(!isNumber(tmp[1],&spazio)) 
+      {
                     //fprintf(stderr,"questo è a %s\n",a);
                     //fprintf(stderr,"questo è il risultato %d\n",spazio);
-      } else {
+      } 
+      else 
+      {
         perror("errato config.txt (isNumber)");
         exit(EXIT_FAILURE);
         //fprintf(stderr, "ERRORE %s non è un numero\n", tmp[1]);
@@ -115,7 +108,7 @@ void parser(void) {
       //numeroFile = atoi(tmp[1]);
     }
     if(strcmp(tmp[0], WORK) == 0) {
-      fprintf(stderr,"questo è il risultato dello worker %d\n", isNumber(tmp[1],&numWorkers));
+      //fprintf(stderr,"questo è il risultato dello worker %d\n", isNumber(tmp[1],&numWorkers));
       
       if(!isNumber(tmp[1],&numWorkers)) {
       } else {
@@ -142,36 +135,38 @@ void parser(void) {
   fprintf(stderr,"numWorkers: %d\n", numWorkers);
 }
 
-void* threadF(void* arg) { //funzione dei thread worker
-  fprintf(stderr, "ciao\n");
+int* threadF(void* arg) { //funzione dei thread worker
   while(1) {
+    while(queueClient->len == 0) 
+    {
+      pthread_cond_wait(&condQueueClient, &mutexQueueClient);
+      fprintf(stderr, "sono sveglio!\n");
+    }
     pthread_mutex_lock(&mutexQueueClient);
     void* tmp = pop(&queueClient);
     pthread_mutex_unlock(&mutexQueueClient);
 
     if(tmp == NULL)
       continue;
-    fprintf(stderr, "ciaoyguyj\n");
 
-    long connfd = (long)tmp;
-
+    long connfd = (long)tmp; // id del client che sta facendo richiesta 
 
     msg_t str;
-    if (readn(connfd, &str.len, sizeof(int))<=0) return NULL;
-    str.str = calloc((str.len), sizeof(char));
-    if (!str.str) {
+    if (readn(connfd, &str.len, sizeof(int))<=0) return -1;
+    str.arg = calloc((str.len), sizeof(char));
+    if (!str.arg) {
 	perror("calloc");
 	fprintf(stderr, "Memoria esaurita....\n");
-	return NULL;
+	return -1;
     }
-    if (readn(connfd, str.str, str.len*sizeof(char))<=0) return NULL;
+    if (readn(connfd, str.arg, str.len*sizeof(char))<=0) return -1;
     //toup(str.str);
-    if (writen(connfd, &str.len, sizeof(int))<=0) { free(str.str); return NULL;}
-    if (writen(connfd, str.str, str.len*sizeof(char))<=0) { free(str.str); return NULL;}
-    free(str.str);
+    if (writen(connfd, &str.len, sizeof(int))<=0) { free(str.arg); return -1;}
+    if (writen(connfd, str.arg, str.len*sizeof(char))<=0) { free(str.arg); return -1;}
+    free(str.arg);
 
   }
-  return NULL;
+  return 0;
 }
 
 int main(int argc, char* argv[]) {
@@ -195,19 +190,18 @@ int main(int argc, char* argv[]) {
 
   int listenfd;
 
-  //SYSCALL_EXIT("socket", listenfd, socket(AF_UNIX, SOCK_STREAM, 0), "socket", "");
-  listenfd = socket(AF_UNIX, SOCK_STREAM, 0);
+  SYSCALL_EXIT("socket", listenfd, socket(AF_UNIX, SOCK_STREAM, 0), "socket", "");
 
   struct sockaddr_un serv_addr;
   memset(&serv_addr, '0', sizeof(serv_addr));
   serv_addr.sun_family = AF_UNIX;
-  strncpy(serv_addr.sun_path, SockName, strlen(SockName)+1); // cos'è il socname??
+  strncpy(serv_addr.sun_path, SockName, strlen(SockName)+1);
 //fprintf(stderr, "SONO ARRIVATO QUI\n");
   int notused;
-  //SYSCALL_EXIT("bind", notused, bind(listenfd, (struct sockaddr*)&serv_addr,sizeof(serv_addr)), "bind", "");
-  notused = bind(listenfd, (struct sockaddr*)&serv_addr,sizeof(serv_addr));
-  //SYSCALL_EXIT("listen", notused, listen(listenfd, MAXBACKLOG), "listen", "");
-  notused = listen(listenfd, MAXBACKLOG);
+  SYSCALL_EXIT("bind", notused, bind(listenfd, (struct sockaddr*)&serv_addr,sizeof(serv_addr)), "bind", "");
+  
+  SYSCALL_EXIT("listen", notused, listen(listenfd, MAXBACKLOG), "listen", "");
+  
 
   fd_set set, tmpset;
   // azzero sia il master set che il set temporaneo usato per la select
@@ -234,15 +228,47 @@ int main(int argc, char* argv[]) {
       if (FD_ISSET(i, &tmpset)) {
         long connfd;
         if (i == listenfd) { // e' una nuova richiesta di connessione
-          //SYSCALL_EXIT("accept", connfd, accept(listenfd, (struct sockaddr*)NULL ,NULL), "accept", "");
-          connfd = accept(listenfd, (struct sockaddr*)NULL ,NULL);
+          SYSCALL_EXIT("accept", connfd, accept(listenfd, (struct sockaddr*)NULL ,NULL), "accept", "");
           FD_SET(connfd, &set);  // aggiungo il descrittore al master set
           if(connfd > fdmax)
             fdmax = connfd;  // ricalcolo il massimo
           continue;
         }
-        connfd = i;  // e' una nuova richiesta da un client già connesso
-        // se non ci sono richieste come faccio a non fargli fare niente?
+        connfd = i; 
+
+        FD_CLR(connfd, &set);//levo il bit nella set perchè sto gestendo la richiesta di connfd
+        
+        msg_t str;
+
+        if (readn(connfd, &str.len, sizeof(int))<=0) { fprintf(stderr, "ERRORE SULLA LUNGHEZZA LETTURA\n"); }
+        str.len = str.len - sizeof(char);
+        //togliamo sizeof(char) perchè nella read al comando prima stiamo leggendo già un carattere
+        if (readn(connfd, &str.comando, sizeof(char))<=0) { fprintf(stderr, "ERRORE LETTURA COMANDO\n"); }
+
+        str.arg = calloc((str.len), sizeof(char));
+        if (!str.arg) 
+        {
+    	    perror("calloc");
+    	    fprintf(stderr, "Memoria esaurita....\n");
+          //return -1
+        }
+        if (readn(connfd, str.arg, (str.len)*sizeof(char))<=0) { fprintf(stderr, "ERRORE LETTURA ARGOMENTO\n"); }
+        //-R 2 -> array char* argv[] e int argc
+        //-w file1,file3
+        //inserisco in coda il comando letto
+        ComandoClient *cmdtmp = malloc(sizeof(ComandoClient));
+        cmdtmp->comando = str.comando;
+        cmdtmp->parametro = malloc(sizeof(char) * strlen(str.arg));
+        cmdtmp->connfd = connfd;
+        strcpy(cmdtmp->parametro, str.arg);
+
+        pthread_mutex_lock(&mutexQueueClient);
+        push(&queueClient, cmdtmp);
+        pthread_mutex_unlock(&mutexQueueClient);
+        pthread_cond_signal(&condQueueClient); 
+        
+
+        // e' una nuova richiesta da un client già connesso
   // eseguo il comando e se c'e' un errore lo tolgo dal master set
         //if (cmd(connfd) < 0) {
         /*if (-1 < 0) {

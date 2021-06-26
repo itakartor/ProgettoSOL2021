@@ -25,7 +25,6 @@
 	exit(errno_copy);			\
     }
 
-
 static inline int readn(long fd, void *buf, size_t size) {
     size_t left = size;
     int r;
