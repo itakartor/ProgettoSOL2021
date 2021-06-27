@@ -33,7 +33,11 @@ int numeroFile = 0; //informazioni del file config
 int numWorkers = 0;
 char* SockName = NULL;
 
+long connfd;        //fd del socket del client 
+fd_set set;         //maschera dei bit
 Queue *queueClient; //coda dei client che fanno richieste
+
+int **p;            //array di pipe
 
 static pthread_mutex_t mutexQueueClient = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t condQueueClient = PTHREAD_COND_INITIALIZER;
@@ -50,14 +54,14 @@ void cleanup() { //cancellare il collegamento
   unlink(SockName);
 }
 
-void parser(void) {
-  char* a = NULL;
+void parser(void) {   //parser del file
   int i;
   char* save;
   char* token;
 
   char* buffer = malloc(sizeof(char) * MAXBUFFER);
   FILE* p;
+
   if((p = fopen(CONFIGFILE, "r")) == NULL) 
   {
     //gestione dell'errore
@@ -65,12 +69,10 @@ void parser(void) {
   }
   while(fgets(buffer, MAXBUFFER, p)) 
   {
-    //ora facciamo il parser della singola riga
-    //tokenizzo la stringa e vedo il numero di virgole
     save = NULL;
     token = strtok_r(buffer, " ",  &save);
     char** tmp = malloc(sizeof(char*) * 2);
-    i = 0;
+    i = 0;        //indice dell'array tmp per salvare l'argomento della variabile di interesse
     while(token) {
       tmp[i] = malloc(sizeof(char) * MAXSTRING);
       strncpy(tmp[i], token, strlen(token) - i); //se è il secondo elemento (i = i) non deve prendere il newline finale,
@@ -78,13 +80,11 @@ void parser(void) {
       i++;
     }
 
-    if(strcmp(tmp[0], SPAZIO) == 0) 
-    {
-      //le due stringhe sono uguali
-      if(!isNumber(tmp[1],&spazio)) 
+    if(strcmp(tmp[0], SPAZIO) == 0) //controllo se il file è formatatto nel modo corretto 
+    {                               //esempio:spazio 100
+      if(!isNumber(tmp[1],&spazio)) //spazio massimo dedicato
       {
-                    //fprintf(stderr,"questo è a %s\n",a);
-                    //fprintf(stderr,"questo è il risultato %d\n",spazio);
+        //fprintf(stderr,"questo è il risultato %d\n",spazio);
       } 
       else 
       {
@@ -93,25 +93,27 @@ void parser(void) {
         //fprintf(stderr, "ERRORE %s non è un numero\n", tmp[1]);
       }
     }
-    if(strcmp(tmp[0], NUMEROFILE) == 0) {
+    if(strcmp(tmp[0], NUMEROFILE) == 0)//numero massimo di file
+    {
       //fprintf(stderr,"questo è il risultato dello numero file %d\n", isNumber(tmp[1],&numeroFile));
-      
       if(!isNumber(tmp[1], &numeroFile)) {
       } else {
         perror("errato config.txt (isNumber)");
         exit(EXIT_FAILURE);
       }
     }
-    if(strcmp(tmp[0], SOC) == 0) {
+    if(strcmp(tmp[0], SOC) == 0)//nome del socket
+    {
       SockName = malloc(sizeof(char) * strlen(tmp[1]));
       strncpy(SockName, tmp[1], strlen(tmp[1]));
-      //numeroFile = atoi(tmp[1]);
     }
-    if(strcmp(tmp[0], WORK) == 0) {
-      //fprintf(stderr,"questo è il risultato dello worker %d\n", isNumber(tmp[1],&numWorkers));
-      
-      if(!isNumber(tmp[1],&numWorkers)) {
-      } else {
+    if(strcmp(tmp[0], WORK) == 0)//numero di thread worker
+    {
+      //fprintf(stderr,"questo è il risultato dello worker %d\n", isNumber(tmp[1],&numWorkers));  
+      if(!isNumber(tmp[1],&numWorkers)) 
+      {}
+      else 
+      {
         perror("errato config.txt (isNumber)");
         exit(EXIT_FAILURE);
       }
@@ -121,52 +123,71 @@ void parser(void) {
   free(tmp[1]);
   free(tmp);
   }
-  fclose(p);
-
-
-
-  free(buffer);
-
-
+  fclose(p);  
+  free(buffer);// libero l'array tmp, il buffer e chiudo il file
   //fprintf(stderr,"abbiamo chiuso il file\n");
+  
+  //stampa di debug
   fprintf(stderr,"spazio: %d\n", spazio);
   fprintf(stderr,"numeroFile: %d\n", numeroFile);
   fprintf(stderr,"SockName: %s\n", SockName);
   fprintf(stderr,"numWorkers: %d\n", numWorkers);
 }
 
-int* threadF(void* arg) { //funzione dei thread worker
+static void* threadF(void* arg) //funzione dei thread worker
+{
+  int* numThread = (int*)arg; 
   while(1) {
+    pthread_mutex_lock(&mutexQueueClient);
     while(queueClient->len == 0) 
     {
+      fprintf(stderr, "sto dormendo!\n");
       pthread_cond_wait(&condQueueClient, &mutexQueueClient);
-      fprintf(stderr, "sono sveglio!\n");
+      
     }
-    pthread_mutex_lock(&mutexQueueClient);
-    void* tmp = pop(&queueClient);
+    fprintf(stderr, "sono sveglio!\n");
+    ComandoClient* tmp = pop(&queueClient);
     pthread_mutex_unlock(&mutexQueueClient);
 
     if(tmp == NULL)
+    {
+      fprintf(stderr,"è vuoto tmp");
       continue;
+    }  
 
-    long connfd = (long)tmp; // id del client che sta facendo richiesta 
+    
+    long connfd = tmp->connfd; // id del client che sta facendo richiesta 
+    char comando = tmp->comando;
+    char* parametro = tmp->parametro;
 
-    msg_t str;
-    if (readn(connfd, &str.len, sizeof(int))<=0) return -1;
+    fprintf(stderr,"questo è il comando %c\n",tmp->comando);
+    fprintf(stderr,"questo è l'argomento %s\n",tmp->parametro);
+    fprintf(stderr,"questo è l'ID %ld\n",tmp->connfd);
+  
+  /*msg_t str;
+    if (readn(connfd, &str.len, sizeof(int))<=0) return NULL; 
     str.arg = calloc((str.len), sizeof(char));
     if (!str.arg) {
 	perror("calloc");
 	fprintf(stderr, "Memoria esaurita....\n");
-	return -1;
+	return NULL;
     }
-    if (readn(connfd, str.arg, str.len*sizeof(char))<=0) return -1;
+    if (readn(connfd, str.arg, str.len*sizeof(char))<=0) return NULL;
     //toup(str.str);
-    if (writen(connfd, &str.len, sizeof(int))<=0) { free(str.arg); return -1;}
-    if (writen(connfd, str.arg, str.len*sizeof(char))<=0) { free(str.arg); return -1;}
+   
     free(str.arg);
+*/ 
+    char* risposta = "messaggio di prova";
+    int lenRisposta = strlen(risposta);
+    if (writen(connfd, &lenRisposta, sizeof(int))<=0) { free(risposta); perror("ERRORE LUNGHEZZA RISPOSTA");}
+    if (writen(connfd, risposta, lenRisposta*sizeof(char))<=0) { free(risposta); perror("ERRORE STRINGA RISPOSTA");}
+    
+    FD_SET(connfd, &set);
+    FD_SET(p[*numThread][1], &set); //devo capire dove rimettere questa riga di codice, perchè così non va
+    write(p[*numThread][1], "vai", 3);
 
   }
-  return 0;
+  return NULL;
 }
 
 int main(int argc, char* argv[]) {
@@ -196,7 +217,7 @@ int main(int argc, char* argv[]) {
   memset(&serv_addr, '0', sizeof(serv_addr));
   serv_addr.sun_family = AF_UNIX;
   strncpy(serv_addr.sun_path, SockName, strlen(SockName)+1);
-//fprintf(stderr, "SONO ARRIVATO QUI\n");
+
   int notused;
   SYSCALL_EXIT("bind", notused, bind(listenfd, (struct sockaddr*)&serv_addr,sizeof(serv_addr)), "bind", "");
   
@@ -224,11 +245,10 @@ int main(int argc, char* argv[]) {
 
 // cerchiamo di capire da quale fd abbiamo ricevuto una richiesta
     for(int i=0; i <= fdmax; i++) {
-
       if (FD_ISSET(i, &tmpset)) {
-        long connfd;
         if (i == listenfd) { // e' una nuova richiesta di connessione
           SYSCALL_EXIT("accept", connfd, accept(listenfd, (struct sockaddr*)NULL ,NULL), "accept", "");
+          fpritnf(stderr,"il server ha accettato la connessione con %ld\n",connfd);
           FD_SET(connfd, &set);  // aggiungo il descrittore al master set
           if(connfd > fdmax)
             fdmax = connfd;  // ricalcolo il massimo
@@ -253,9 +273,7 @@ int main(int argc, char* argv[]) {
           //return -1
         }
         if (readn(connfd, str.arg, (str.len)*sizeof(char))<=0) { fprintf(stderr, "ERRORE LETTURA ARGOMENTO\n"); }
-        //-R 2 -> array char* argv[] e int argc
-        //-w file1,file3
-        //inserisco in coda il comando letto
+
         ComandoClient *cmdtmp = malloc(sizeof(ComandoClient));
         cmdtmp->comando = str.comando;
         cmdtmp->parametro = malloc(sizeof(char) * strlen(str.arg));
