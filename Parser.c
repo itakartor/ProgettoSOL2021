@@ -72,7 +72,7 @@ int arg_w(char* optarg, Queue *q)
                         //fprintf(stderr, "tmp da vedere %s\n", tmp);
                         if(isNumber(tmp, &num))
                         {
-                                fprintf(stderr,"questo è un numero -> %d\n",num);
+                                //fprintf(stderr,"questo è un numero -> %d\n",num);
                         }
                         else 
                         {
@@ -82,7 +82,7 @@ int arg_w(char* optarg, Queue *q)
                 } 
         } 
             insert(&q, 'w', dirname, num);
-            printQueue(q);
+            //printQueue(q);
 
             free(arg);
             free(dirname);
@@ -103,7 +103,7 @@ int arg_W(char* optarg, Queue* q)
                 token = strtok_r(NULL, ",", &save);
             }
         free(arg);
-        printQueue(q);
+        //printQueue(q);
         //printf("\n\n\n");               
         return 0;
 }
@@ -111,7 +111,7 @@ int arg_W(char* optarg, Queue* q)
 int arg_R(char* argv[],int argc,Queue* q)
 {
         //R può avere opzionalmente una opzione, che è messa quindi facoltativa e parsata a parte
-        printf("guardo R\n");
+        //printf("guardo R\n");
         int nfacoltativo = 0;
         char* nextstring = NULL; //la stringa seguente a -R passata da riga di comando
         if(optind != argc)      //se -R non è l'ultimo argomento passato
@@ -148,9 +148,8 @@ int arg_R(char* argv[],int argc,Queue* q)
 }
 int arg_d(char* optarg, Queue* q)
 {
-        fprintf(stderr,"siamo alla d\n");
+        //fprintf(stderr,"siamo alla d\n");
         insert(&q,'d',optarg, 0);
-        printQueue(q);
         return 0;   
 }
 int arg_t(char* optarg, Queue* q) // controllo se l'argomento è un numero?
@@ -178,9 +177,10 @@ int arg_p(Queue* q)
         insert(&q,'p',NULL, 0);
         return 0;
 }
-int parsel(char* argv[],int argc, int p, Queue* q)
+Queue* parser(char* argv[],int argc)
 {
     int opt;
+    Queue* q = initQueue();
     while ((opt = getopt(argc,argv, "hf:w:W:Rd:t:l:u:c:p")) != -1) {
         switch(opt) {
         case 'h': 
@@ -225,5 +225,5 @@ int parsel(char* argv[],int argc, int p, Queue* q)
         default:;
         }
     }
-    return 0;
+    return q;
 }
