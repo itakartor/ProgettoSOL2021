@@ -86,3 +86,13 @@ int isNumber(const char* s, int* n) {
   return 1;   // non e' un numero
 }
 
+int isPipe(int numWorkers, int connfd, int ** p)
+{
+        for(int j = 0; j < numWorkers; j++) {
+          //fprintf(stderr, "sono nel for, connfd %ld p[j][0] %d\n", connfd, p[j][0]);
+          if(connfd == p[j][0])
+            return 1;
+          else
+            return 0;  
+}
+

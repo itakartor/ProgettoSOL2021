@@ -190,26 +190,33 @@ static void* threadF(void* arg) //funzione dei thread worker
   return NULL;
 }
 
-int main(int argc, char* argv[]) {
-  
-  parser();
-  cleanup();
+int main(int argc, char* argv[]) 
+{
+  int numThread = -1;//numero identificativo del thread 
+  parser();     //prendo le informazioni dal file config.txt
+  numWorkers = 1;
+  cleanup();    //ripulisco vecchie connessioni 
   atexit(cleanup);
   queueClient = initQueue(); //coda dei file descriptor dei client che provano a connettersi
-
-
-   pthread_t t;
-    if(pthread_create(&t, NULL, threadF, NULL) != 0)
+  
+  p = malloc(sizeof(int*) * numWorkers); //array delle pipe
+  
+  pthread_t *t = malloc(sizeof(pthread_t) * numWorkers); //array dei thread
+  for(int i = 0; i < numWorkers; i++) 
+  {
+    numThread = i;
+    if(pthread_create(&t[i], NULL, &threadF, &numThread) != 0)
     {
         fprintf(stderr, "pthread_create failed server\n");
     }
-  /*pthread_t *t = malloc(sizeof(pthread_t) * numWorkers); //array dei thread
-  for(int i = 0; i < numWorkers; i++) {
-    pthread_create(&t[i], NULL, threadF, NULL);
-    //sleep(1);
-  }*/
 
-  int listenfd;
+    int pfd[2];
+    if(pipe(pfd) == -1) { perror("ERRORE CREAZIONE PIPE"); }
+    p[i] = pfd;
+    //sleep(1);
+  }
+
+  int listenfd; //codice identificato del listen per accettare le nuove connessioni
 
   SYSCALL_EXIT("socket", listenfd, socket(AF_UNIX, SOCK_STREAM, 0), "socket", "");
 
@@ -224,13 +231,18 @@ int main(int argc, char* argv[]) {
   SYSCALL_EXIT("listen", notused, listen(listenfd, MAXBACKLOG), "listen", "");
   
 
-  fd_set set, tmpset;
+  fd_set tmpset;
   // azzero sia il master set che il set temporaneo usato per la select
   FD_ZERO(&set);
   FD_ZERO(&tmpset);
 
   // aggiungo il listener fd al master set
   FD_SET(listenfd, &set);
+
+  for(int i = 0; i < numWorkers; i++) {
+    FD_SET(p[i][0], &set); //p array di pipe, aggiungo tutte le pipe alla set in lettura
+    fprintf(stderr, "inserisco il connfd della pipe %d\n", p[i][0]);
+  }
 
   // tengo traccia del file descriptor con id piu' grande
   int fdmax = listenfd;
@@ -244,9 +256,12 @@ int main(int argc, char* argv[]) {
     }
 
 // cerchiamo di capire da quale fd abbiamo ricevuto una richiesta
-    for(int i=0; i <= fdmax; i++) {
-      if (FD_ISSET(i, &tmpset)) {
-        if (i == listenfd) { // e' una nuova richiesta di connessione
+    for(int i=0; i <= fdmax; i++) 
+    {
+      if (FD_ISSET(i, &tmpset)) 
+      {
+        if (i == listenfd) 
+        { // e' una nuova richiesta di connessione
           SYSCALL_EXIT("accept", connfd, accept(listenfd, (struct sockaddr*)NULL ,NULL), "accept", "");
           fpritnf(stderr,"il server ha accettato la connessione con %ld\n",connfd);
           FD_SET(connfd, &set);  // aggiungo il descrittore al master set
@@ -254,13 +269,33 @@ int main(int argc, char* argv[]) {
             fdmax = connfd;  // ricalcolo il massimo
           continue;
         }
-        connfd = i; 
+        //Ramo ELSE
+        //devo controllare se la select si è risvegliata per una pipe 
+        //oppure per una nuova richiesta
+
+        connfd = i;         //client gia connesso con una nuova richiesta 
+
+        if(isPipe(numWorkers,connfd,p)) //controllo se è una pipe
+        {
+          fprintf(stderr, "è una pipe\n");
+          FD_CLR(connfd, &set);
+          continue;
+        }
+          
+
 
         FD_CLR(connfd, &set);//levo il bit nella set perchè sto gestendo la richiesta di connfd
         
         msg_t str;
-
-        if (readn(connfd, &str.len, sizeof(int))<=0) { fprintf(stderr, "ERRORE SULLA LUNGHEZZA LETTURA\n"); }
+        int err =readn(connfd, &str.len, sizeof(int));
+        if(err == 0) //socket vuoto
+        {
+          fprintf(stderr, "client disconnesso\n");
+          continue;
+        }
+        if (err<0) { fprintf(stderr, "ERRORE SULLA LUNGHEZZA LETTURA\n"); }
+        
+        
         str.len = str.len - sizeof(char);
         //togliamo sizeof(char) perchè nella read al comando prima stiamo leggendo già un carattere
         if (readn(connfd, &str.comando, sizeof(char))<=0) { fprintf(stderr, "ERRORE LETTURA COMANDO\n"); }
@@ -284,22 +319,6 @@ int main(int argc, char* argv[]) {
         push(&queueClient, cmdtmp);
         pthread_mutex_unlock(&mutexQueueClient);
         pthread_cond_signal(&condQueueClient); 
-        
-
-        // e' una nuova richiesta da un client già connesso
-  // eseguo il comando e se c'e' un errore lo tolgo dal master set
-        //if (cmd(connfd) < 0) {
-        /*if (-1 < 0) {
-          close(connfd);
-          FD_CLR(connfd, &set);
-    // controllo se deve aggiornare il massimo
-          if (connfd == fdmax)
-            fdmax = updatemax(set, fdmax);
-        }*/
-        //parser dei comandi + inserimento delle richieste in una coda dove possano accedere 
-        //i worker
-        //push(&queueClient, &connfd);
-        //printf("inserito\n");
       }
     }
   }
