@@ -39,5 +39,7 @@ typedef struct _Queue {
 void push(Queue **q, void* el);
 Queue* initQueue();
 void* pop(Queue **q);
-
+void printQueue(Queue *q);
+void insert(Queue **q, char cmd, char* name, int n);
+void push(Queue **q, void* el);
 #endif
