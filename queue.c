@@ -87,4 +87,14 @@ void printQueue(Queue *q) {
   }
 }
 
+void printQueueFiles(Queue *q) {
+  Node* tmp = q->head;
+  fileRam *no = NULL;
+  while(tmp != NULL) {
+    no = tmp->data;
+    fprintf(stdout, "nomefile %s length %ld\n", no->nome, no->length);
+    tmp = tmp->next;
+  }
+}
+
 //#endif

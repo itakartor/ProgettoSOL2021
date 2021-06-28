@@ -36,25 +36,19 @@ char* SockName = NULL;
 long connfd;        //fd del socket del client 
 fd_set set;         //maschera dei bit
 Queue *queueClient; //coda dei client che fanno richieste
+Queue *queueFiles; //coda dei file memorizzati
 
 int **p;            //array di pipe
 
 static pthread_mutex_t mutexQueueClient = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t mutexQueueFiles = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t condQueueClient = PTHREAD_COND_INITIALIZER;
-
-typedef struct _file {
-  char* nome;
-  long size;
-  char* buffer; //contenuto
-  long length; //per fare la read e la write, meglio se memorizzato
-} File;
-
 
 void cleanup() { //cancellare il collegamento
   unlink(SockName);
 }
 
-void parser(void) {   //parser del file
+void parserFile(void) {   //parser del file
   int i;
   char* save;
   char* token;
@@ -134,6 +128,23 @@ void parser(void) {   //parser del file
   fprintf(stderr,"numWorkers: %d\n", numWorkers);
 }
 
+int fileExists(Queue *q, char* nomefile) { // controlla se un fileRam è gia presente nella codaFile del server
+  pthread_mutex_lock(&mutexQueueFiles);
+  Node* tmp = q->head;
+  fileRam *no = NULL;
+  while(tmp != NULL) {
+    no = tmp->data;
+    //fprintf(stdout, "nomefile %s length %ld\n", no->nome, no->length);
+    if(strcmp(nomefile, no->nome) == 0) {
+      pthread_mutex_unlock(&mutexQueueFiles);
+      return 1;
+    }
+    tmp = tmp->next;
+  }
+  pthread_mutex_unlock(&mutexQueueFiles);
+  return 0;
+}
+
 static void* threadF(void* arg) //funzione dei thread worker
 {
   int* numThread = (int*)arg; 
@@ -164,11 +175,64 @@ static void* threadF(void* arg) //funzione dei thread worker
     fprintf(stderr,"questo è l'argomento %s\n",tmp->parametro);
     fprintf(stderr,"questo è l'ID %ld\n",tmp->connfd);
 
-    char* risposta = "messaggio di prova";
-    int lenRisposta = strlen(risposta);
-    if (writen(connfd, &lenRisposta, sizeof(int))<=0) { free(risposta); perror("ERRORE LUNGHEZZA RISPOSTA");}
-    if (writen(connfd, risposta, lenRisposta*sizeof(char))<=0) { free(risposta); perror("ERRORE STRINGA RISPOSTA");}
-    
+    char* risposta = malloc(sizeof(char)*MAXSTRING);
+    int lenRisposta;
+    int notused;
+
+     //POSSIBILI COMANDI PASSATI
+    switch(comando) 
+    {
+      case 'W': 
+      { //richiesta di scrittura
+        int esiste = fileExists(queueFiles, parametro);
+        if(esiste == 0)//se fileExists ritorna 0 vuol dire che il file non esiste nella coda
+        {
+          risposta = "file ok";
+        } 
+        else 
+        {
+          risposta = "file già esistente";
+        }
+
+        lenRisposta = strlen(risposta);
+        if (writen(connfd, &lenRisposta, sizeof(int))<=0) { perror("ERRORE SCRITTURA NUMERO SERVER"); }     //vado a scrivere sul socket del client che ho trovato o meno il file nella coda
+        if (writen(connfd, risposta, lenRisposta * sizeof(char))<=0) { perror("ERRORE SCRITTURA RISPOSTA SERVER"); }
+        //fprintf(stderr, "ho scritto\n");
+        if(!esiste) {
+          fileRam *newfile = malloc(sizeof(fileRam));
+          newfile->nome = malloc(sizeof(char) * strlen(parametro));
+          strcpy(newfile->nome, parametro);
+          
+          //fprintf(stderr, "sto scrivendo\n");
+          SYSCALL_EXIT("readn", notused, readn(connfd, &(newfile->length), sizeof(int)), "read", "");
+          newfile->buffer = malloc(sizeof(char) * newfile->length);
+          SYSCALL_EXIT("readn", notused, readn(connfd, newfile->buffer, (newfile->length)*sizeof(char)), "read", "");
+          
+          //if (readn(connfd, newfile->buffer, (newfile->length)*sizeof(char))<=0) { fprintf(stderr, "sbagliato2\n"); }
+          
+          fprintf(stderr, "length file %ld\n", newfile->length);
+          pthread_mutex_lock(&mutexQueueFiles);
+          push(&queueFiles, newfile);           //inserisco il file nella code del server
+          pthread_mutex_unlock(&mutexQueueFiles);
+          risposta = "file inserito";
+
+          //fprintf(stderr, "risposta %s\n", risposta);
+          printQueueFiles(queueFiles);
+
+          lenRisposta = strlen(risposta);
+          
+          if (writen(connfd, &lenRisposta, sizeof(int))<=0) { perror("ERRORE SCRITTURA RISPOSTA SERVER"); } //scrivo nel client il risultato dell'operazione 
+          if (writen(connfd, risposta, lenRisposta * sizeof(char))<=0) { perror("ERRORE SCRITTURA RISPOSTA SERVER"); }
+        }
+        break;
+      }
+      case 'r': 
+      {
+
+        break;
+      }
+    }
+
     FD_SET(connfd, &set);
     write(p[*numThread][1], "vai", 3);
 
@@ -179,12 +243,13 @@ static void* threadF(void* arg) //funzione dei thread worker
 int main(int argc, char* argv[]) 
 {
   int numThread = -1;//numero identificativo del thread 
-  parser();     //prendo le informazioni dal file config.txt
+  parserFile();      //prendo le informazioni dal file config.txt
   numWorkers = 1;
   cleanup();    //ripulisco vecchie connessioni 
   atexit(cleanup);
   queueClient = initQueue(); //coda dei file descriptor dei client che provano a connettersi
-  
+  queueFiles = initQueue();
+
   p = malloc(sizeof(int*) * numWorkers); //array delle pipe
   
   pthread_t *t = malloc(sizeof(pthread_t) * numWorkers); //array dei thread
@@ -225,13 +290,17 @@ int main(int argc, char* argv[])
   // aggiungo il listener fd al master set
   FD_SET(listenfd, &set);
 
+  // tengo traccia del file descriptor con id piu' grande
+  int fdmax = listenfd;
+
   for(int i = 0; i < numWorkers; i++) {
     FD_SET(p[i][0], &set); //p array di pipe, aggiungo tutte le pipe alla set in lettura
+    if(p[i][0] > fdmax)
+      fdmax = p[i][0];
     fprintf(stderr, "inserisco il connfd della pipe %d\n", p[i][0]);
   }
 
-  // tengo traccia del file descriptor con id piu' grande
-  int fdmax = listenfd;
+  
   
   for(;;) {
 // copio il set nella variabile temporanea per la select
@@ -264,7 +333,8 @@ int main(int argc, char* argv[])
         if(isPipe(numWorkers,connfd,p)) //controllo se è una pipe
         {
           fprintf(stderr, "è una pipe\n");
-          FD_CLR(connfd, &set);
+          char* buftmp;
+          read(connfd, buftmp, 6);
           continue;
         }
           

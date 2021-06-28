@@ -34,10 +34,18 @@ typedef struct _Queue {
     pthread_cond_t      cond;
 } Queue;
 
+typedef struct _file {
+  char* nome;
+  long size;
+  char* buffer; //contenuto
+  long length; //per fare la read e la write, meglio se memorizzato
+} fileRam;
+
 void push(Queue **q, void* el);
 Queue* initQueue();
 void* pop(Queue **q);
 void printQueue(Queue *q);
 void insert(Queue **q, char cmd, char* name, int n);
 void push(Queue **q, void* el);
+void printQueueFiles(Queue *q);
 #endif
