@@ -1,12 +1,24 @@
-#include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <errno.h>
+#include <string.h>
+#include <unistd.h>
+#include <dirent.h>
 #include <getopt.h>
+#include <time.h>
+#include <errno.h>
+#include <limits.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/socket.h>
+#include <sys/uio.h>
+
+#include <sys/un.h>
+#include <ctype.h>
+#include <pthread.h>
 
 #include "queue.h" //ho incluso la definizione di coda
 #include "util.h"
-
+#include "Parser.h"
 // limite sulla lunghezza della stringa passata come argomento
 #define MY_ARGV_MAX  512
 

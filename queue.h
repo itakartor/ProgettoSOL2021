@@ -1,8 +1,6 @@
 #ifndef QUEUE_H_
 #define QUEUE_H_
 
-#include <pthread.h>
-
 typedef struct _Node {
     void*           data;
     struct _Node*    next;
@@ -23,7 +21,7 @@ typedef struct _comandoclient {
 typedef struct msg {
     int len;
     char comando;    //lunghezza del messaggio
-    char *arg;  //messaggio
+    char *arg;       //messaggio
 } msg_t;
 /**
 *

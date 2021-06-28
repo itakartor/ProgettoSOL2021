@@ -163,27 +163,13 @@ static void* threadF(void* arg) //funzione dei thread worker
     fprintf(stderr,"questo è il comando %c\n",tmp->comando);
     fprintf(stderr,"questo è l'argomento %s\n",tmp->parametro);
     fprintf(stderr,"questo è l'ID %ld\n",tmp->connfd);
-  
-  /*msg_t str;
-    if (readn(connfd, &str.len, sizeof(int))<=0) return NULL; 
-    str.arg = calloc((str.len), sizeof(char));
-    if (!str.arg) {
-	perror("calloc");
-	fprintf(stderr, "Memoria esaurita....\n");
-	return NULL;
-    }
-    if (readn(connfd, str.arg, str.len*sizeof(char))<=0) return NULL;
-    //toup(str.str);
-   
-    free(str.arg);
-*/ 
+
     char* risposta = "messaggio di prova";
     int lenRisposta = strlen(risposta);
     if (writen(connfd, &lenRisposta, sizeof(int))<=0) { free(risposta); perror("ERRORE LUNGHEZZA RISPOSTA");}
     if (writen(connfd, risposta, lenRisposta*sizeof(char))<=0) { free(risposta); perror("ERRORE STRINGA RISPOSTA");}
     
     FD_SET(connfd, &set);
-    FD_SET(p[*numThread][1], &set); //devo capire dove rimettere questa riga di codice, perchè così non va
     write(p[*numThread][1], "vai", 3);
 
   }
@@ -263,7 +249,7 @@ int main(int argc, char* argv[])
         if (i == listenfd) 
         { // e' una nuova richiesta di connessione
           SYSCALL_EXIT("accept", connfd, accept(listenfd, (struct sockaddr*)NULL ,NULL), "accept", "");
-          fpritnf(stderr,"il server ha accettato la connessione con %ld\n",connfd);
+          fprintf(stderr,"il server ha accettato la connessione con %ld\n",connfd);
           FD_SET(connfd, &set);  // aggiungo il descrittore al master set
           if(connfd > fdmax)
             fdmax = connfd;  // ricalcolo il massimo
