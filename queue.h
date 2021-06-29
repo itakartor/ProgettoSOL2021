@@ -49,4 +49,5 @@ void insert(Queue **q, char cmd, char* name, int n);
 void push(Queue **q, void* el);
 void printQueueFiles(Queue *q);
 int removeFromQueue(Queue **q, Node* toDelete);
+Node* fileExistsServer(Queue *q, char* nomefile);
 #endif

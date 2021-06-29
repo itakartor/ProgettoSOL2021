@@ -47,22 +47,6 @@ pthread_cond_t condQueueClient = PTHREAD_COND_INITIALIZER;
 void cleanup() { //cancellare il collegamento
   unlink(SockName);
 }
-Node* fileExistsInServer(Queue *q, char* nomefile)//verifico se un node appartiene ad una coda e in caso la restituisco 
-{
-  Node* tmp = q->head;
-  fileRam *no = NULL;
-  while(tmp != NULL) 
-  {
-    no = tmp->data;
-    //fprintf(stdout, "nomefile %s length %ld\n", no->nome, no->length);
-    if(strcmp(nomefile, no->nome) == 0) 
-    {
-      return tmp;
-    }
-    tmp = tmp->next;
-  }
-  return NULL;
-}
 
 void parserFile(void) {   //parser del file
   int i;
@@ -144,23 +128,6 @@ void parserFile(void) {   //parser del file
   fprintf(stderr,"numWorkers: %d\n", numWorkers);
 }
 
-Node* fileExists(Queue *q, char* nomefile) 
-{ // controlla se un fileRam è gia presente nella codaFile del server
-  //il nomefile è il pathname del file
-  Node* tmp = q->head;
-  fileRam *no = NULL;
-  while(tmp != NULL) 
-  {
-    no = tmp->data;
-    if(strcmp(nomefile, no->nome) == 0) 
-    {
-      return tmp;
-    }
-    tmp = tmp->next;
-  }
-  return NULL;
-}
-
 static void* threadF(void* arg) //funzione dei thread worker
 {
   int* numThread = (int*)arg; 
@@ -195,13 +162,13 @@ static void* threadF(void* arg) //funzione dei thread worker
     int lenRisposta;
     int notused;
 
-     //POSSIBILI COMANDI PASSATI
+    //POSSIBILI COMANDI PASSATI
     switch(comando) 
     {
       case 'W': 
       { //richiesta di scrittura
-        int esiste = fileExists(queueFiles, parametro);
-        if(esiste == 0)//se fileExists ritorna 0 vuol dire che il file non esiste nella coda
+        Node* esiste = fileExistsServer(queueFiles, parametro);
+        if(esiste != NULL)//se fileExists ritorna 0 vuol dire che il file non esiste nella coda
         {
           risposta = "file ok";
         } 

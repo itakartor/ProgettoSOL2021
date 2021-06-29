@@ -128,4 +128,21 @@ int removeFromQueue(Queue **q, Node* toDelete)
   return ok;
 }
 
+Node* fileExistsServer(Queue *q, char* nomefile) 
+{ // controlla se un fileRam è gia presente nella codaFile del server
+  //il nomefile è il pathname del file
+  Node* tmp = q->head;
+  fileRam *no = NULL;
+  while(tmp != NULL) 
+  {
+    no = tmp->data;
+    if(strcmp(nomefile, no->nome) == 0) 
+    {
+      return tmp;
+    }
+    tmp = tmp->next;
+  }
+  return NULL;
+}
+
 //#endif
