@@ -47,6 +47,22 @@ pthread_cond_t condQueueClient = PTHREAD_COND_INITIALIZER;
 void cleanup() { //cancellare il collegamento
   unlink(SockName);
 }
+Node* fileExistsInServer(Queue *q, char* nomefile)//verifico se un node appartiene ad una coda e in caso la restituisco 
+{
+  Node* tmp = q->head;
+  fileRam *no = NULL;
+  while(tmp != NULL) 
+  {
+    no = tmp->data;
+    //fprintf(stdout, "nomefile %s length %ld\n", no->nome, no->length);
+    if(strcmp(nomefile, no->nome) == 0) 
+    {
+      return tmp;
+    }
+    tmp = tmp->next;
+  }
+  return NULL;
+}
 
 void parserFile(void) {   //parser del file
   int i;
@@ -128,21 +144,21 @@ void parserFile(void) {   //parser del file
   fprintf(stderr,"numWorkers: %d\n", numWorkers);
 }
 
-int fileExists(Queue *q, char* nomefile) { // controlla se un fileRam è gia presente nella codaFile del server
-  pthread_mutex_lock(&mutexQueueFiles);
+Node* fileExists(Queue *q, char* nomefile) 
+{ // controlla se un fileRam è gia presente nella codaFile del server
+  //il nomefile è il pathname del file
   Node* tmp = q->head;
   fileRam *no = NULL;
-  while(tmp != NULL) {
+  while(tmp != NULL) 
+  {
     no = tmp->data;
-    //fprintf(stdout, "nomefile %s length %ld\n", no->nome, no->length);
-    if(strcmp(nomefile, no->nome) == 0) {
-      pthread_mutex_unlock(&mutexQueueFiles);
-      return 1;
+    if(strcmp(nomefile, no->nome) == 0) 
+    {
+      return tmp;
     }
     tmp = tmp->next;
   }
-  pthread_mutex_unlock(&mutexQueueFiles);
-  return 0;
+  return NULL;
 }
 
 static void* threadF(void* arg) //funzione dei thread worker
@@ -226,9 +242,25 @@ static void* threadF(void* arg) //funzione dei thread worker
         }
         break;
       }
-      case 'r': 
+      case 'c'://remove file dalla coda
       {
-
+        int res;
+        pthread_mutex_lock(&mutexQueueFiles);//prendo il mutex per vedere se il file esiste e se posso rimuoverlo
+        Node* esiste = fileExistsInServer(queueFiles, parametro);
+        if(esiste != NULL) 
+        {
+          res = removeFromQueue(&queueFiles, esiste);
+          fprintf(stderr, "file %s rimosso con successo dal server\n", parametro);
+          pthread_mutex_unlock(&mutexQueueFiles);
+        } 
+        else//in caso che non esistesse il file nel server
+        {
+          pthread_mutex_unlock(&mutexQueueFiles);
+          fprintf(stderr, "errore, file %s NON rimosso dal server (non esisteva)\n", parametro);
+          res = 0;
+        }
+        //printQueueFiles(queueFiles); debug
+        if (writen(connfd, &res, sizeof(int))<=0) { perror("ERRORE RISPOSTA SERVER"); }
         break;
       }
     }

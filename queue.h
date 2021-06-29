@@ -48,4 +48,5 @@ void printQueue(Queue *q);
 void insert(Queue **q, char cmd, char* name, int n);
 void push(Queue **q, void* el);
 void printQueueFiles(Queue *q);
+int removeFromQueue(Queue **q, Node* toDelete);
 #endif
