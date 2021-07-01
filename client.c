@@ -108,25 +108,121 @@ int openConnection(const char* sockname, int msec, const struct timespec abstime
     return 0;
 }
 
-int removeFile(const char* pathname) 
-{
+int closeConnection(const char* sockname){
+  if(sockname == NULL){
+    errno = EINVAL;
+    return -1;
+  }
+    // wrong socket name
+  if(strcmp(sockname, SOCKNAME) != 0){
+        // this socket is not connected
+    errno = ENOTCONN;
+    return -1;
+  }
+
+  if( close(sockfd) == -1 ){
+    sockfd = -1;
+    return -1;
+  }
+
+  fprintf(stderr, "Connessione chiusa\n");
+
+  sockfd = -1;
+  return 0;
+}
+
+int writeCMD(const char* pathname, char cmd) {//parte ricorrente per mandare il comando al server
+  //manca gestione errore
   int notused;
   char *buffer = NULL;
-  char* towrite = malloc(sizeof(char) * (strlen(pathname) + 1)); //alloco la stringa da scrivere, che sarà del tipo "rfile"
-  towrite[0] = 'c';
+  char* towrite = malloc(sizeof(char) * (strlen(pathname) + 2)); //alloco la stringa da scrivere, che sarà del tipo "rfile"
+  towrite[0] = cmd;
   for(int i = 1; i <= strlen(pathname); i++)
     towrite[i] = pathname[i - 1];
+  towrite[strlen(pathname) + 1] = '\0';
   fprintf(stderr, "sto scrivendo nel socket %s, nome file originale %s\n", towrite, pathname);
   int n = strlen(towrite) + 1; //terminatore
 
   SYSCALL_EXIT("writen", notused, writen(sockfd, &n, sizeof(int)), "write", "");
   SYSCALL_EXIT("writen", notused, writen(sockfd, towrite, n * sizeof(char)), "write", "");
 
-  int res;
+}
+
+int removeFile(const char* pathname) 
+{
+  writeCMD(pathname,'c');//utilizzo il comando c 
+
+  int res, notused;
   SYSCALL_EXIT("readn", notused, readn(sockfd, &res, sizeof(int)), "read", "");
-  if(res != 1) { perror("sa_success"); return -1; }
-  fprintf(stderr, "File %s cancellato con successo dal server\n", pathname);
-  return 0;
+  if(res != 1) { perror("ERRORI RIMOZIONE"); return -1; }//controllo se ho rimosso in modo corretto il file
+  fprintf(stderr, "File %s cancellato con successo dal server\n", pathname);//debug 
+  
+  return 0;//se va tutto bene ritorna 0
+}
+
+//non va con il sizet
+int readFile(const char* pathname, void** buf, int* size)//leggo il file al pathname e poi metto il contenuto nel buf
+{
+  fprintf(stderr, "pathname a questo punto %s\n", pathname);
+  writeCMD(pathname, 'r');//scrivo il comando al server
+  int notused;
+  int n;
+  SYSCALL_EXIT("readn", notused, readn(sockfd, &n, sizeof(int)), "read", "");
+  *size = n; //ho letto la size del file
+  //fprintf(stderr, "la size del file che sto provando ad allocare è %d\n", n);
+  if(*size == -1) //se non riesco a trovare il file il server scriverà al client -1 per indicare l'errore
+  {
+    fprintf(stderr, "file %s non esiste\n", pathname);
+    *buf = NULL;//metto il buff a NULL per evitare che provi a scrivere qualcosa nel buf
+    *size = 0;
+    return -1; //errore
+  } 
+  else 
+  {
+    *buf = malloc(sizeof(char) * n);
+    SYSCALL_EXIT("readn", notused, readn(sockfd, *buf, n * sizeof(char)), "read", "");//leggo il contenuto del file
+    fprintf(stderr, "ho letto il file %s dal server\n", pathname);
+    //fprintf(stderr, "ho letto il file %s con contenuto\n %s\n", pathname, (char*)(*buf));
+    return 0; //successo
+  }
+}
+
+int readNFiles(int n, const char* dirname) {
+  //DA FARE: CONTROLLARE SE DIRNAME = NULL, NEL CASO DARE ERRORE
+  char* ntmp = malloc(sizeof(char) * 10);
+  sprintf(ntmp, "%d", n);
+  writeCMD(ntmp, 'R');
+
+  int notused;
+  SYSCALL_EXIT("readn", notused, readn(sockfd, &n, sizeof(int)), "read", "");
+  int lenpathtmp;
+  char* buftmp;
+  char** arr_buf = malloc(sizeof(char*) * n); //abbiamo messo l'array perchè sennò fa casino con le read della readFile
+  for(int i = 0; i < n; i++) { //per ogni file da leggere dal server
+    SYSCALL_EXIT("readn", notused, readn(sockfd, &lenpathtmp, sizeof(int)), "read", "");
+    buftmp = malloc(sizeof(char) * lenpathtmp);
+    SYSCALL_EXIT("readn", notused, readn(sockfd, buftmp, lenpathtmp * sizeof(char)), "read", "");
+    //fprintf(stderr, "leggo il file %s dal server\n", buftmp);
+    arr_buf[i] = buftmp;
+    //void* buffile;
+    //int sizebufffile;
+    //readFile(buftmp, &buffile, &sizebufffile);
+  }
+  fprintf(stderr, "\n\n\n STO STAMPANDO L'ARRAY \n\n\n");
+  for(int i = 0; i < n; i++) {
+    fprintf(stderr, "elemento %d: %s\n", i, arr_buf[i]);
+    void* buffile;
+    int sizebufffile;
+    readFile(arr_buf[i], &buffile, &sizebufffile);
+    char path[1024];
+    fprintf(stderr, "fin qui ci siamo\n");
+    snprintf(path, sizeof(path), "%s/%s", dirname, arr_buf[i]);
+    fprintf(stderr, "fin qui ci siamo, dirname %s, path %s\n", dirname, path);
+
+    appendToFile(path, buffile, sizebufffile);
+  }
+  //SYSCALL_EXIT("writen", notused, writen(sockfd, &n, sizeof(int)), "write", "");
+
 }
 
 int EseguiComandoClient(NodoComando *tmp) 
@@ -161,11 +257,11 @@ int EseguiComandoClient(NodoComando *tmp)
     
     SYSCALL_EXIT("readn", notused, readn(sockfd, &n, sizeof(int)), "read", "");             //leggo una possibile risposta del server se il file che sto per inserire
     SYSCALL_EXIT("readn", notused, readn(sockfd, buffer, n * sizeof(char)), "read", "");    //è gia stato inserito "file ok"-> file da inserire
-    buffer[n] = '\0';                                                                       
-    if(strcmp(buffer, "file ok") == 0) //
+    buffer[n] = '\0';
+    fprintf(stderr, "buffer %s \n", buffer);                                                                       
+    if(strcmp(buffer, "file ok") == 0) //il file non esiste nel server
     {
-      //fprintf(stderr, "file ok\n");
-
+      
       FILE * f = fopen (tmp->name, "rb"); //apro il file in lettura e scrittura    
 
       long length;
@@ -225,6 +321,7 @@ void visitaRicorsiva(char* name, int *n, Queue **q)
   while ((entry = readdir(dir)) != NULL && (*n != 0))//apro la dir e vedo n != 0 perchè in caso dovrei fermarmi
   {
     char path[1024];
+    fprintf(stderr,"entry visitata %s\n",entry->d_name);
     if (entry->d_type == DT_DIR)//vedo se il tipo della entry è una cartella
     {
       if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0 || entry->d_name[0] == '.')
@@ -241,7 +338,7 @@ void visitaRicorsiva(char* name, int *n, Queue **q)
         if(*n > 0 || *n == -1) 
         {
           char buffer[1024];
-          realpath(entry->d_name, buffer); //prendo il path assoluto del file
+          realpath(entry->d_name, buffer); //prendo il path assoluto del file per reperire il file
           //printf("%*s- %s, realpath %s\n", 0, "", entry->d_name, buffer);
 
           NodoComando *new = malloc(sizeof(NodoComando));//vado a gestire il -w attraverso la chiamata -W

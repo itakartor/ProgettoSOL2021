@@ -12,6 +12,8 @@
 #include <sys/socket.h>
 #include <sys/uio.h>
 
+#include <libgen.h>//base name
+
 #include <sys/un.h>
 #include <ctype.h>
 #include <pthread.h>
@@ -136,7 +138,8 @@ Node* fileExistsServer(Queue *q, char* nomefile)
   while(tmp != NULL) 
   {
     no = tmp->data;
-    if(strcmp(nomefile, no->nome) == 0) 
+    fprintf(stderr,"nome file nella coda %s\n",no->nome);
+    if(strcmp(basename(nomefile), no->nome) == 0) 
     {
       return tmp;
     }

@@ -168,7 +168,8 @@ static void* threadF(void* arg) //funzione dei thread worker
       case 'W': 
       { //richiesta di scrittura
         Node* esiste = fileExistsServer(queueFiles, parametro);
-        if(esiste != NULL)//se fileExists ritorna 0 vuol dire che il file non esiste nella coda
+        
+        if(esiste == NULL)//se fileExists ritorna NULL
         {
           risposta = "file ok";
         } 
@@ -176,20 +177,21 @@ static void* threadF(void* arg) //funzione dei thread worker
         {
           risposta = "file già esistente";
         }
-
+        fprintf(stderr,"risposta = %s\n",risposta);
         lenRisposta = strlen(risposta);
         if (writen(connfd, &lenRisposta, sizeof(int))<=0) { perror("ERRORE SCRITTURA NUMERO SERVER"); }     //vado a scrivere sul socket del client che ho trovato o meno il file nella coda
         if (writen(connfd, risposta, lenRisposta * sizeof(char))<=0) { perror("ERRORE SCRITTURA RISPOSTA SERVER"); }
         //fprintf(stderr, "ho scritto\n");
-        if(!esiste) {
+        if(!esiste) 
+        {
           fileRam *newfile = malloc(sizeof(fileRam));
           newfile->nome = malloc(sizeof(char) * strlen(parametro));
           strcpy(newfile->nome, parametro);
           
           //fprintf(stderr, "sto scrivendo\n");
-          SYSCALL_EXIT("readn", notused, readn(connfd, &(newfile->length), sizeof(int)), "read", "");
+          SYSCALL_EXIT("readn", notused, readn(connfd, &(newfile->length), sizeof(int)), "read", "");//leggo la lunghezza del file 
           newfile->buffer = malloc(sizeof(char) * newfile->length);
-          SYSCALL_EXIT("readn", notused, readn(connfd, newfile->buffer, (newfile->length)*sizeof(char)), "read", "");
+          SYSCALL_EXIT("readn", notused, readn(connfd, newfile->buffer, (newfile->length)*sizeof(char)), "read", "");//leggo il contenuto del file
           
           //if (readn(connfd, newfile->buffer, (newfile->length)*sizeof(char))<=0) { fprintf(stderr, "sbagliato2\n"); }
           
@@ -213,7 +215,7 @@ static void* threadF(void* arg) //funzione dei thread worker
       {
         int res;
         pthread_mutex_lock(&mutexQueueFiles);//prendo il mutex per vedere se il file esiste e se posso rimuoverlo
-        Node* esiste = fileExistsInServer(queueFiles, parametro);
+        Node* esiste = fileExistsServer(queueFiles, parametro);
         if(esiste != NULL) 
         {
           res = removeFromQueue(&queueFiles, esiste);
