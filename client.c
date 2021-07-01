@@ -303,7 +303,41 @@ int EseguiComandoClient(NodoComando *tmp)
     removeFile(tmp->name);
     return 0;
   }
-
+  else
+  { 
+    if(tmp->cmd == 'r') 
+    {
+      fprintf(stderr, "sto eseguendo sta parte\n");
+      void* buf;
+      int sizebuff; //col size_t non va
+      readFile(tmp->name, &buf, &sizebuff); //manca gestione errore
+      if(savefiledir != NULL && buf != NULL) 
+      {
+        char path[1024];
+        snprintf(path, sizeof(path), "%s/%s", savefiledir, tmp->name);
+        //fprintf(stderr, "sto andando a scrivere il file %s in %s\n", tmp->name, path);
+        appendToFile(path, buf, sizebuff);
+      }
+      return 0;
+    } 
+    else
+    {
+      if(tmp->cmd == 'R') 
+      {
+        fprintf(stderr, "comando readNFiles con n = %d\n", tmp->n);
+        readNFiles(tmp->n, savefiledir);
+        return 0;
+      } 
+      else
+      { 
+        if(tmp->cmd == 'W') 
+        {
+          fprintf(stderr, "comando W con parametro %s\n", tmp->name);
+          writeFile(tmp->name);
+        }
+      }
+    }
+  }
   int notused;
   char *buffer = NULL;
   if(tmp == NULL) return -1; //errore: tmp non può e non deve essere NULL. Abbiamo già controllato che q->len > 0
