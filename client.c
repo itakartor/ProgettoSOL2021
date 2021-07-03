@@ -154,22 +154,24 @@ int openFile(const char* pathname, int flags)//apertura di un file ram
     return -1;
   }
   writeCMD(pathname, 'e');
-  int res, notused;
+  int risposta, notused;
+  
   SYSCALL_EXIT("writen", notused, writen(sockfd, &flags, sizeof(int)), "write", "");
-  SYSCALL_EXIT("readn", notused, readn(sockfd, &res, sizeof(int)), "read", "");
-  if(res == 0)
-    fprintf(stderr, "il file %s esiste\n", pathname);
+
+  SYSCALL_EXIT("readn", notused, readn(sockfd, &risposta, sizeof(int)), "read", "");
+  if(risposta == 0)
+    fprintf(stderr, "il file %s è stato creato con successo\n", pathname);
   else
-    fprintf(stderr, "il file %s non esiste\n", pathname);
-  return res;
+    fprintf(stderr, "il file %s non è stato creato\n", pathname);
+  return risposta;
 }
 
 int removeFile(const char* pathname) 
 {
   writeCMD(pathname,'c');//utilizzo il comando 'c' 
-  int res, notused;//res è il risultato del server per controllare le corrette condizioni di esecuzione
-  SYSCALL_EXIT("readn", notused, readn(sockfd, &res, sizeof(int)), "read", "");
-  if(res != 0) { perror("ERRORI RIMOZIONE"); return -1; }//controllo se ho rimosso in modo corretto il file
+  int risposta, notused;//risposta è il risultato del server per controllare le corrette condizioni di esecuzione
+  SYSCALL_EXIT("readn", notused, readn(sockfd, &risposta, sizeof(int)), "read", "");
+  if(risposta != 0) { perror("ERRORI RIMOZIONE"); return -1; }//controllo se ho rimosso in modo corretto il file
   fprintf(stderr, "File %s cancellato con successo dal server\n", pathname);//debug 
   
   return 0;//se va tutto bene ritorna 0
@@ -282,17 +284,20 @@ int writeFile(const char* pathname) //scrivo un file nel server
     SYSCALL_EXIT("writen", notused, writen(sockfd, &length, sizeof(int)), "write", "");
     int cista;//se il file entra nel server per la capienza o il numero dei file
     SYSCALL_EXIT("readn", notused, readn(sockfd, &cista, sizeof(int)), "read", "");//leggo se il file può essere caricato nel server per capienza o nFile
+    fprintf(stderr,"cista %d\n",cista);
+    
     if(!cista) 
     { //il file non sta nel server materialmente, neanche se si espellessero tutti i file
       fprintf(stderr, "il file %s non sta materialmente nel server\n", pathname);
       //vanno fatte delle FREE
       return -1;//se il file non ci sta bisogna non fare altro se no il server si blocca
     }
+    
     SYSCALL_EXIT("writen", notused, writen(sockfd, bufferFile, length * sizeof(char)), "write", "");//scrivo il contenuto del file
-
+    fprintf(stderr,"dopo la scrittura del buffer\n");
     int risposta;
     SYSCALL_EXIT("readn", notused, readn(sockfd, &risposta, sizeof(int)), "read", "");
-    printf("result: %s\n", risposta);
+    fprintf(stderr,"result: %d\n", risposta);
 }
 
 int EseguiComandoClient(NodoComando *tmp) 
@@ -330,6 +335,7 @@ int EseguiComandoClient(NodoComando *tmp)
           perror("read");
           return -1; //errore
       }
+      //fprintf(stderr,"buffer:::%s\n",(char*)buf);
     } 
     else
     {
@@ -343,8 +349,8 @@ int EseguiComandoClient(NodoComando *tmp)
         if(tmp->cmd == 'W') 
         {
           fprintf(stderr, "comando W con parametro %s\n", tmp->name);//debug
-          openFile(tmp->name, 1); //flag: apri e crea
-          writeFile(tmp->name);
+          if(openFile(tmp->name, 1) != -1) //flag: apri e crea
+            writeFile(tmp->name);//se non riesce ad aprire il file non lo scrive neanche
         }
       }
     }

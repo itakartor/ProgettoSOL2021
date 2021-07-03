@@ -1,5 +1,5 @@
 //inizio
-spazio 10
+spazio 200000
 numeroFile 100
 sockName mysock
 numWorkers 5

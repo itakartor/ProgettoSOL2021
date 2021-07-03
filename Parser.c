@@ -119,6 +119,24 @@ int arg_W(char* optarg, Queue* q)
         //printf("\n\n\n");               
         return 0;
 }
+int arg_r(char* optarg, Queue* q)
+{
+        char* arg = malloc(sizeof(char) * strlen(optarg));
+        strncpy(arg, optarg, strlen(optarg));
+
+        char* save = NULL;
+        char* token = strtok_r(arg, ",", &save); // Attenzione: l’argomento stringa viene modificato!
+        while(token) {
+                //printf("%s\n", token);
+                insert(&q, 'r', token, 0);       //inserisco tanti comandi in coda quanti sono i file del comando -W file1,[file2]
+                token = strtok_r(NULL, ",", &save);
+            }
+        free(arg);
+        seenr = 1;
+        //printQueue(q);
+        //printf("\n\n\n"); 
+        return 0;
+}
 
 int arg_R(char* argv[],int argc,Queue* q)
 {
@@ -153,7 +171,6 @@ int arg_R(char* argv[],int argc,Queue* q)
         //printf("\n\n\n");
         //printf("nfacoltativo ---->%d \n",nfacoltativo);
         insert(&q, 'R', NULL, nfacoltativo);
-        //sleep(1);
         //printf("caso R %d\n", nfacoltativo);
         //printQueue(q);
         return 0;    
@@ -167,16 +184,6 @@ int arg_d(char* optarg, Queue* q)
 int arg_t(char* optarg, Queue* q) // controllo se l'argomento è un numero?
 {
         insert(&q,'t',optarg, 0);
-        return 0;
-}
-int arg_l(char* optarg, Queue* q)
-{
-        insert(&q,'l',optarg, 0);
-        return 0;
-}
-int arg_u(char* optarg, Queue* q)
-{
-        insert(&q,'u',optarg, 0);
         return 0;
 }
 int arg_c(char* optarg, Queue* q)
@@ -193,7 +200,7 @@ Queue* parser(char* argv[],int argc)
 {
     int opt;
     Queue* q = initQueue();
-    while ((opt = getopt(argc,argv, "hf:w:W:Rd:t:l:u:c:p")) != -1) {
+    while ((opt = getopt(argc,argv, "hf:w:W:Rd:t:l:u:c:pr:")) != -1) {
         switch(opt) {
         case 'h': 
                 arg_h();  //messaggio di help
@@ -207,6 +214,9 @@ Queue* parser(char* argv[],int argc)
         case 'W': 
                 arg_W(optarg, q);  //tokenizzo la stringa per suddividere la richiesta -W file1,[file2] per ogni file 
                 break;
+        case 'r':
+                arg_r(optarg, q);
+                break;
         case 'R':
                 arg_R(argv,argc, q);
                 break;
@@ -215,12 +225,6 @@ Queue* parser(char* argv[],int argc)
                 break;
         case 't':
                 arg_t(optarg, q);
-                break;
-        case 'l':
-                arg_l(optarg, q);
-                break;
-        case 'u':
-                arg_u(optarg, q);
                 break;
         case 'c':
                 arg_c(optarg, q);
