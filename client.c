@@ -146,6 +146,27 @@ int writeCMD(const char* pathname, char cmd)
   SYSCALL_EXIT("writen", notused, writen(sockfd, towrite, n * sizeof(char)), "write", "");
 }
 
+int closeFile(const char* pathname) {
+  if(pathname == NULL) 
+  {
+    errno = EINVAL;
+    return -1;
+  }
+
+  writeCMD(pathname, 'z');
+  int risposta, notused;
+  SYSCALL_EXIT("readn", notused, readn(sockfd, &risposta, sizeof(int)), "read", "");//leggo la risposta del server che sta "chiudendo il file"
+  if(risposta == -1) 
+  {
+    fprintf(stderr, "closeFile del file %s fallita\n", pathname);
+  } 
+  else 
+  {
+    fprintf(stderr, "ho chiuso il file %s\n", pathname);
+  }
+  return risposta;
+}
+
 int openFile(const char* pathname, int flags)//apertura di un file ram
 {
   if((flags != 0 && flags != 1) || pathname == NULL) 
@@ -153,12 +174,12 @@ int openFile(const char* pathname, int flags)//apertura di un file ram
     errno = EINVAL;
     return -1;
   }
-  writeCMD(pathname, 'e');
+  writeCMD(pathname, 'o');
   int risposta, notused;
   
-  SYSCALL_EXIT("writen", notused, writen(sockfd, &flags, sizeof(int)), "write", "");
+  SYSCALL_EXIT("writen", notused, writen(sockfd, &flags, sizeof(int)), "write", "");//scrivo i flag dell'apertura file
 
-  SYSCALL_EXIT("readn", notused, readn(sockfd, &risposta, sizeof(int)), "read", "");
+  SYSCALL_EXIT("readn", notused, readn(sockfd, &risposta, sizeof(int)), "read", "");//leggo il risultato dell'apertura
   if(risposta == 0)
     fprintf(stderr, "il file %s è stato creato con successo\n", pathname);
   else
@@ -198,18 +219,17 @@ int readFile(const char* pathname, void** buf, int* size)//leggo il file al path
   {
     *buf = malloc(sizeof(char) * n);//alloco lo spazio del buffer per il contenuto del file
     SYSCALL_EXIT("readn", notused, readn(sockfd, *buf, n * sizeof(char)), "read", "");//leggo il contenuto del file
-    fprintf(stderr, "ho letto il file %s dal server\n", pathname);
     //fprintf(stderr, "ho letto il file %s con contenuto\n %s\n", pathname, (char*)(*buf));
     return 0; //successo
   }
 }
 
-int appendToFile(const char* pathname, void* buf, int size) 
+int writeBufToDisk(const char* pathname, void* buf, int size) 
 {
   FILE *f = fopen (pathname, "a"); //bisogna gestire gli errori 
   fwrite(buf, 1, size, f);
   fclose(f);
-  return 0;//successo
+  return 1;//successo
 }
 
 int readNFiles(int n, const char* dirname) //int n è il numero dei file da leggere
@@ -223,7 +243,7 @@ int readNFiles(int n, const char* dirname) //int n è il numero dei file da legg
   SYSCALL_EXIT("readn", notused, readn(sockfd, &n, sizeof(int)), "read", "");//leggo dal socket del server il numero di file da leggere
   int lenpathtmp;                                                            //visto che potrebbero essere meno di quelli dichiarati dal parametro n
   char* buftmp;
-  char** arr_buf = malloc(sizeof(char*) * n); //abbiamo messo l'array perchè sennò fa casino con le read della readFile
+  char** arr_buf = malloc(sizeof(char*) * n); //tengo traccia dei path dei file per poi leggerli in un secondo momento
   for(int i = 0; i < n; i++) 
   { //per ogni file da leggere dal server
     SYSCALL_EXIT("readn", notused, readn(sockfd, &lenpathtmp, sizeof(int)), "read", "");
@@ -240,29 +260,60 @@ int readNFiles(int n, const char* dirname) //int n è il numero dei file da legg
     fprintf(stderr, "elemento %d: %s\n", i, arr_buf[i]);//debug
     void* buffile;
     int sizebufffile;
-    openFile(arr_buf[i], 0);
-    readFile(arr_buf[i], &buffile, &sizebufffile);//leggo un singolo file preso dall'array dei file
-    char path[1024];//dichiaro un path 
-    //fprintf(stderr, "fin qui ci siamo\n");
-    snprintf(path, sizeof(path), "%s/%s", dirname, arr_buf[i]);
-    fprintf(stderr, "fin qui ci siamo, dirname %s, path %s\n", dirname, path);//debug
+    if(openFile(arr_buf[i], 0) != -1)//gestione dell'errore
+    {
+      readFile(arr_buf[i], &buffile, &sizebufffile);//leggo un singolo file preso dall'array dei file
+      char path[MAXPATH];//dichiaro un path 
+      //fprintf(stderr, "fin qui ci siamo\n");
+      snprintf(path, sizeof(path), "%s/%s", dirname, arr_buf[i]);
+      fprintf(stderr, "fin qui ci siamo, dirname %s, path %s\n", dirname, path);//debug
 
-    appendToFile(path, buffile, sizebufffile);//infine scrivo in append il contenuto del file
+      writeBufToDisk(path, buffile, sizebufffile);//infine scrivo in append il contenuto del file
+      closeFile(arr_buf[i]);//infine chiudo il file
+    }
   }
+}
+
+int appendToFile(const char* pathname, void* buf, int size) 
+{
+  int notused;
+  fprintf(stderr, "length file %s: %d\n", pathname, size);
+  SYSCALL_EXIT("writen", notused, writen(sockfd, &size, sizeof(int)), "write", "");
+  int cista;
+  SYSCALL_EXIT("readn", notused, readn(sockfd, &cista, sizeof(int)), "read", "");
+  if(!cista) 
+  { //il file non sta nel server materialmente, neanche se si espellessero tutti i file
+    fprintf(stderr, "il file %s non sta materialmente nel server\n", pathname);
+      //vanno fatte delle FREE
+    return -1;
+  }
+  SYSCALL_EXIT("writen", notused, writen(sockfd, (char*)buf, size * sizeof(char)), "write", "");
+
+  int risposta;
+  SYSCALL_EXIT("readn", notused, readn(sockfd, &risposta, sizeof(int)), "read", "");
+  printf("result: %d\n", risposta);
+  return 0;
 }
 
 int writeFile(const char* pathname) //scrivo un file nel server 
 {
   int notused, n;//n è la lunghezza del buffer nel quale salvo le risposte del server 
   writeCMD(pathname, 'W');
-  char *buffer = NULL;
-  n = strlen(pathname) + 2; //+2 per il comando e il terminatore
-  buffer = realloc(buffer, n*sizeof(char));
-  if (!buffer) { perror("realloc"); fprintf(stderr, "Memoria esaurita....\n"); }
-
-
   
-    //fprintf(stderr, "file ok\n");
+  int risposta;
+  SYSCALL_EXIT("readn", notused, readn(sockfd, &risposta, sizeof(int)), "read", "");
+  if(risposta == -1) 
+  {
+    fprintf(stderr, "Errore: il file %s non esiste o non è stato aperto\n", pathname);
+    return -1;
+  } 
+  else//se non ci sono problemi durante la creazione del file o l'apertura
+  {
+    char *buffer = NULL;
+    n = strlen(pathname) + 2; //+2 per il comando e il terminatore
+    buffer = realloc(buffer, n*sizeof(char));
+    if (!buffer) { perror("realloc"); fprintf(stderr, "Memoria esaurita....\n"); return -1;}
+
     FILE * f = fopen (pathname, "rb");
     //questa parte recupera la lunghezza e il contenuto di un file potrei pure metterlo in una funzione
     long length;
@@ -280,25 +331,9 @@ int writeFile(const char* pathname) //scrivo un file nel server
       fclose (f);
     }
 
-    fprintf(stderr, "length file %s: %ld\n", pathname, length);//debug
-    SYSCALL_EXIT("writen", notused, writen(sockfd, &length, sizeof(int)), "write", "");
-    int cista;//se il file entra nel server per la capienza o il numero dei file
-    SYSCALL_EXIT("readn", notused, readn(sockfd, &cista, sizeof(int)), "read", "");//leggo se il file può essere caricato nel server per capienza o nFile
-    fprintf(stderr,"cista %d\n",cista);
-    
-    if(!cista) 
-    { //il file non sta nel server materialmente, neanche se si espellessero tutti i file
-      fprintf(stderr, "il file %s non sta materialmente nel server\n", pathname);
-      //vanno fatte delle FREE
-      return -1;//se il file non ci sta bisogna non fare altro se no il server si blocca
-    }
-    fprintf(stderr, "IL FILE CI STA\n");//debug
-    
-    SYSCALL_EXIT("writen", notused, writen(sockfd, bufferFile, length * sizeof(char)), "write", "");//scrivo il contenuto del file
-    //fprintf(stderr,"dopo la scrittura del buffer\n");
-    int risposta;
-    SYSCALL_EXIT("readn", notused, readn(sockfd, &risposta, sizeof(int)), "read", "");
-    fprintf(stderr,"result: %d\n", risposta);
+    appendToFile(pathname, bufferFile, length);
+  }
+  return 0;//successo
 }
 
 int EseguiComandoClient(NodoComando *tmp) 
@@ -311,30 +346,40 @@ int EseguiComandoClient(NodoComando *tmp)
   if(tmp->cmd == 'c')//gestisco il comando con c per eliminare il file dal server
   {
     fprintf(stderr, "file da rimuovere %s\n", tmp->name);
-    openFile(tmp->name, 0);
-    removeFile(tmp->name);
+    if(openFile(tmp->name, 0) != -1)
+    {
+      removeFile(tmp->name);
+      closeFile(tmp->name);
+    }
   }
   else
   { 
     if(tmp->cmd == 'r')
     {
       fprintf(stderr, "sto eseguendo r\n");//debug
-      openFile(tmp->name, 0);
-      
-      void* buf;
-      int sizebuff; //col size_t non va
-      readFile(tmp->name, &buf, &sizebuff); //manca gestione errore
-      if(savefiledir != NULL && buf != NULL) //se le condizioni sono corrette leggo il file
+      if(openFile(tmp->name, 0) != -1)
       {
-        char path[1024];
-        snprintf(path, sizeof(path), "%s/%s", savefiledir, tmp->name);
-        //fprintf(stderr, "sto andando a scrivere il file %s in %s\n", tmp->name, path);
-        appendToFile(path, buf, sizebuff);
+        void* buf;
+        int sizebuff; //col size_t non va
+        readFile(tmp->name, &buf, &sizebuff); //manca gestione errore
+        if(savefiledir != NULL && buf != NULL) //se le condizioni sono corrette leggo il file
+        {
+          char path[MAXPATH];
+          snprintf(path, sizeof(path), "%s/%s", savefiledir, tmp->name);
+          //fprintf(stderr, "sto andando a scrivere il file %s in %s\n", tmp->name, path);
+          writeBufToDisk(path, buf, sizebuff);
+          closeFile(tmp->name);
+        }
+        else // non ho una cartella per salvare il file oppure il buffer è vuoto(però se è vuoto dovrebbe ugualmente fare qualcosa)
+        {
+            perror("read");
+            return -1; //errore
+        }
       }
-      else // non ho una cartella per salvare il file oppure il buffer è vuoto(però se è vuoto dovrebbe ugualmente fare qualcosa)
+      else
       {
-          perror("read");
-          return -1; //errore
+          perror("openfile");
+          return -1;
       }
       //fprintf(stderr,"buffer:::%s\n",(char*)buf);
     } 
@@ -350,8 +395,19 @@ int EseguiComandoClient(NodoComando *tmp)
         if(tmp->cmd == 'W') 
         {
           fprintf(stderr, "comando W con parametro %s\n", tmp->name);//debug
-          if(openFile(tmp->name, 1) != -1) //flag: apri e crea
+          if(openFile(tmp->name, 1) != -1)//flag: apri e crea
+          {
             writeFile(tmp->name);//se non riesce ad aprire il file non lo scrive neanche
+            closeFile(tmp->name);
+          } 
+          else
+          {
+            if(openFile(tmp->name, 0) != -1) //flag: apri (magari il file esiste già)
+            { 
+              writeFile(tmp->name);
+              closeFile(tmp->name);
+            }
+          } 
         }
       }
     }
@@ -403,12 +459,11 @@ void visitaRicorsiva(char* name, int *n, Queue **q)//name è il nome del path e 
 
           NodoComando *new = malloc(sizeof(NodoComando));//vado a gestire il -w attraverso la chiamata -W
           new->cmd = 'W';
-          new->name = malloc(sizeof(char) * strlen(buffer));
-          new->n = 0;
+          new->name = malloc(sizeof(char) * (strlen(buffer)+1));
           strcpy(new->name, buffer);
-          push(q, new);//bisogna ricontrollare il path perchè ha un problema latente 
-          //fprintf(stderr, "HO APPENA SCRITTO %s, strlen %ld\n", new->name, strlen(new->name));
-          //printQueuee(*q);
+          new->name[strlen(buffer)] = '\0';
+          new->n = 0;
+          push(q, new);
         }
         if(*n > 0)//se solo se n>0 lo decremento
           (*n)--;
@@ -416,7 +471,7 @@ void visitaRicorsiva(char* name, int *n, Queue **q)//name è il nome del path e 
     }
   }
   closedir(dir);//chiudo la directory
-  if (chdir(buftmp) == -1) { perror("chdir");  exit(EXIT_FAILURE); }
+  if (chdir(buftmp) == -1) { perror("chdir buff temporaneo");  exit(EXIT_FAILURE); }
 }
 
 int main(int argc, char *argv[]) 
@@ -448,7 +503,7 @@ int main(int argc, char *argv[])
         free(tmp->name);
         tmp->name = malloc(sizeof(char) * MAXPATH);
         
-        if (getcwd(tmp->name, MAXPATH) == NULL) { perror("getcwd");  exit(EXIT_FAILURE); }
+        if (getcwd(tmp->name, MAXPATH) == NULL) { perror("getcwd realpath main");  exit(EXIT_FAILURE); }
       }
       visitaRicorsiva(tmp->name, &(tmp->n), &q);//però metto n=-1 per evitare il caso in cui n si decrementa fino a 0
     } 

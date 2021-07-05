@@ -567,6 +567,8 @@ int main(int argc, char* argv[])
         if(err == 0) //socket vuoto
         {
           fprintf(stderr, "client disconnesso\n");
+          if (connfd == fdmax)
+            fdmax = updatemax(set, fdmax);
           continue;
         }
         if (err<0) { fprintf(stderr, "ERRORE SULLA LUNGHEZZA LETTURA\n"); }
@@ -581,7 +583,6 @@ int main(int argc, char* argv[])
         {
     	    perror("calloc");
     	    fprintf(stderr, "Memoria esaurita....\n");
-          //return -1
         }
         if (readn(connfd, str.arg, (str.len)*sizeof(char))<=0) { fprintf(stderr, "ERRORE LETTURA ARGOMENTO\n"); }
 
