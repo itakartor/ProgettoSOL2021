@@ -170,19 +170,22 @@ int arg_R(char* argv[],int argc,Queue* q)
         //printQueue(q);
         //printf("\n\n\n");
         //printf("nfacoltativo ---->%d \n",nfacoltativo);
+        seenR = 1;
         insert(&q, 'R', NULL, nfacoltativo);
         //printf("caso R %d\n", nfacoltativo);
         //printQueue(q);
         return 0;    
 }
-int arg_d(char* optarg, Queue* q)
+int arg_d(char* optarg)
 {
         //fprintf(stderr,"siamo alla d\n");
-        insert(&q,'d',optarg, 0);
+        savefiledir = malloc(sizeof(char) * strlen(optarg));
+        strcpy(savefiledir, optarg);
         return 0;   
 }
 int arg_t(char* optarg, Queue* q) // controllo se l'argomento è un numero?
 {
+        timems = atoi(optarg);
         insert(&q,'t',optarg, 0);
         return 0;
 }
@@ -191,13 +194,16 @@ int arg_c(char* optarg, Queue* q)
         insert(&q,'c',optarg, 0);
         return 0;
 }
-int arg_p(Queue* q)
+int arg_p()
 {
-        insert(&q,'p',NULL, 0);
+        verbose = 1;
         return 0;
 }
 Queue* parser(char* argv[],int argc)
 {
+    savefiledir = NULL;
+    timems = 0;
+    verbose = 0;        
     int opt;
     Queue* q = initQueue();
     while ((opt = getopt(argc,argv, "hf:w:W:Rd:t:l:u:c:pr:")) != -1) {
@@ -221,7 +227,7 @@ Queue* parser(char* argv[],int argc)
                 arg_R(argv,argc, q);
                 break;
         case 'd':
-                arg_d(optarg, q);
+                arg_d(optarg);
                 break;
         case 't':
                 arg_t(optarg, q);
@@ -230,7 +236,7 @@ Queue* parser(char* argv[],int argc)
                 arg_c(optarg, q);
                 break;
         case 'p':
-                arg_p(q);
+                arg_p();
                 break;
         case ':': {
         printf("l'opzione '-%c' richiede un argomento\n", optopt);
@@ -240,6 +246,11 @@ Queue* parser(char* argv[],int argc)
         } break;
         default:;
         }
+    }
+    if(savefiledir != NULL && seenr == 0 && seenR == 0) 
+    {
+     fprintf(stderr, "errore, l'opzione -d va usata insieme a -r o a -R\n");
+     exit(EXIT_FAILURE);
     }
     return q;
 }

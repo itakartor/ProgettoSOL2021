@@ -292,9 +292,10 @@ int writeFile(const char* pathname) //scrivo un file nel server
       //vanno fatte delle FREE
       return -1;//se il file non ci sta bisogna non fare altro se no il server si blocca
     }
+    fprintf(stderr, "IL FILE CI STA\n");//debug
     
     SYSCALL_EXIT("writen", notused, writen(sockfd, bufferFile, length * sizeof(char)), "write", "");//scrivo il contenuto del file
-    fprintf(stderr,"dopo la scrittura del buffer\n");
+    //fprintf(stderr,"dopo la scrittura del buffer\n");
     int risposta;
     SYSCALL_EXIT("readn", notused, readn(sockfd, &risposta, sizeof(int)), "read", "");
     fprintf(stderr,"result: %d\n", risposta);
@@ -379,8 +380,8 @@ void visitaRicorsiva(char* name, int *n, Queue **q)//name è il nome del path e 
 
   while ((entry = readdir(dir)) != NULL && (*n != 0))//apro la dir e vedo n != 0 perchè in caso dovrei fermarmi
   {
-    char path[1024];
-    fprintf(stderr,"entry visitata %s\n",entry->d_name);
+    char path[MAXPATH];
+    //fprintf(stderr,"entry visitata %s\n",entry->d_name);
     if (entry->d_type == DT_DIR)//vedo se il tipo della entry è una cartella
     {
       if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0 || entry->d_name[0] == '.')
@@ -396,7 +397,7 @@ void visitaRicorsiva(char* name, int *n, Queue **q)//name è il nome del path e 
       {
         if(*n > 0 || *n == -1) 
         {
-          char buffer[1024];
+          char buffer[MAXPATH];
           realpath(entry->d_name, buffer); //prendo il path assoluto del file per reperire il file
           //printf("%*s- %s, realpath %s\n", 0, "", entry->d_name, buffer);
 
@@ -445,9 +446,9 @@ int main(int argc, char *argv[])
       if(strcmp(tmp->name, ".") == 0)//se passo come dir "." metto il path reale
       {
         free(tmp->name);
-        tmp->name = malloc(sizeof(char) * 1024);
+        tmp->name = malloc(sizeof(char) * MAXPATH);
         
-        if (getcwd(tmp->name, 1024) == NULL) { perror("getcwd");  exit(EXIT_FAILURE); }
+        if (getcwd(tmp->name, MAXPATH) == NULL) { perror("getcwd");  exit(EXIT_FAILURE); }
       }
       visitaRicorsiva(tmp->name, &(tmp->n), &q);//però metto n=-1 per evitare il caso in cui n si decrementa fino a 0
     } 

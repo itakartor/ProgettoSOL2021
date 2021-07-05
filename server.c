@@ -124,7 +124,8 @@ void parserFile(void) {   //parser del file
   free(buffer);// libero l'array tmp, il buffer e chiudo il file
   //fprintf(stderr,"abbiamo chiuso il file\n");
   
-  if(spazio <= 0 || numeroFile <= 0 || SockName == NULL || numWorkers <= 0) {
+  if(spazio <= 0 || numeroFile <= 0 || SockName == NULL || numWorkers <= 0) 
+  {
     fprintf(stderr, "config.txt errato\n");
     exit(EXIT_FAILURE);
   }
@@ -138,6 +139,7 @@ void parserFile(void) {   //parser del file
 static void* threadF(void* arg) //funzione dei thread worker
 {
   int* numThread = (int*)arg; 
+  fprintf(stderr,"num thread %d\n",*numThread);
   while(1) 
   {
     pthread_mutex_lock(&mutexQueueClient);
@@ -166,8 +168,6 @@ static void* threadF(void* arg) //funzione dei thread worker
     fprintf(stderr,"questo è l'argomento %s\n",tmp->parametro);
     fprintf(stderr,"questo è l'ID %ld\n",tmp->connfd);
 
-    char* risposta = malloc(sizeof(char)*MAXSTRING);
-    int lenRisposta;
     int notused;
 
     //POSSIBILI COMANDI PASSATI
@@ -179,42 +179,83 @@ static void* threadF(void* arg) //funzione dei thread worker
         Node* esiste = fileExistsServer(queueFiles, parametro);
         pthread_mutex_unlock(&mutexQueueFiles);
 
-        fileRam* newFile = esiste->data;
-
-        //fprintf(stderr, "sto scrivendo\n");
-        SYSCALL_EXIT("readn", notused, readn(connfd, &(newFile->length), sizeof(int)), "read", "");//leggo la lunghezza del file 
-          
-        int cista = 1;//il file ci sta 
-        if(newFile->length > spazio) 
-        { //non lo memorizza proprio
-          fprintf(stderr, "Il file %s è troppo grande (%ld) e non sta materialmente nel server (capienza massima %d)\n", newFile->nome, newFile->length, spazio);
-            //vanno fatte delle FREE
-            //vado a scrivere nel socket che il file non ci sta
-          cista = 0;
-        }
-
-        if (writen(connfd, &cista, sizeof(int))<=0) { perror("ERRORE SCRITTURA CISTA"); }
-        if(cista)
-        {
-          while(spazioOccupato + newFile->length > spazio)
-          { //deve iniziare ad espellere file
-            fprintf(stderr, "il server è pieno (di spazio)\n");
-            fileRam *fileramtmptrash = pop(&queueFiles);
-            fprintf(stderr, "Sto espellendo il file %s dal server\n", fileramtmptrash->nome);
-            spazioOccupato-=fileramtmptrash->length;
-              //vanno fatte FREE
+        int risposta = 0;
+        if(esiste == NULL) 
+        { //errore: il file non esiste
+          risposta = -1;
+          if (writen(connfd, &risposta, sizeof(int))<=0) { perror("ERRORE SCRITTURA RISPOSTA"); }
+        } 
+        else
+        { //file esiste
+          fileRam *newFile = esiste->data;
+          if(newFile->is_locked != connfd) 
+          { //file eistse ma non aperto dal client
+            risposta = -1;
           }
-          spazioOccupato+=newFile->length;
-
-          newFile->buffer = malloc(sizeof(char) * newFile->length);//contenuto del file da leggere 
-          SYSCALL_EXIT("readn", notused, readn(connfd, newFile->buffer, (newFile->length)*sizeof(char)), "read", "");//leggo il contenuto del file
-          int risposta = 0;//successo  
+          if (writen(connfd, &risposta, sizeof(int))<=0) { perror("ERRORE SCRITTURA RISPOSTA"); }  
+        
+          if(risposta != -1)
+          {
+            int lentmp;
+            //fprintf(stderr, "sto scrivendo\n");
+            SYSCALL_EXIT("readn", notused, readn(connfd, &lentmp, sizeof(int)), "read", "");//leggo la lunghezza del file 
+              
+            int cista = 1;//il file ci sta 
+            if(lentmp > spazio) 
+            { //non lo memorizza proprio
+              fprintf(stderr, "Il file %s è troppo grande (%ld) e non sta materialmente nel server (capienza massima %d)\n", newFile->nome, newFile->length, spazio);
+                //vanno fatte delle FREE
+                //vado a scrivere nel socket che il file non ci sta
+              removeFromQueue(&queueFiles, esiste);//rimuovo il file dalla coda perchè ho gia inserito il file
+              cista = 0;
+            }
           
-          fprintf(stderr, "risposta %d\n", risposta);
-          //fprintf(stderr, "STO STAMPANDO LA CODA\n");
-          printQueueFiles(queueFiles);//debug
-            
-          if (writen(connfd, &risposta, sizeof(int))<=0) { perror("ERRORE SCRITTURA RISPOSTA SERVER"); } //scrivo nel client il risultato dell'operazione
+            if (writen(connfd, &cista, sizeof(int))<=0) { perror("ERRORE SCRITTURA CISTA"); }
+            if(cista)
+            {
+              fileRam *fileramtmptrash;
+              while(spazioOccupato + lentmp > spazio)
+              { //deve iniziare ad espellere file
+                fprintf(stderr, "il server è pieno (di spazio)\n");
+                fileRam *firstel = returnFirstEl(queueFiles);
+                if(newFile != firstel) { //non rimuove il primo elemento perchè è proprio quello che dobbiamo inserire o modificare
+                  fileramtmptrash = pop(&queueFiles);
+                } else { //rimuove il secondo elemento
+                  fileramtmptrash = pop2(&queueFiles);
+                }
+                fprintf(stderr, "Sto espellendo il file %s dal server\n", fileramtmptrash->nome);
+                spazioOccupato-=fileramtmptrash->length;
+                  //vanno fatte FREE
+              }
+              //sto aggiungendo il file perchè c'è abbastanza spazio 
+              spazioOccupato+=lentmp;//aggiorno lo spazio occupato
+
+              char* buftmp = malloc(sizeof(char) * lentmp);//contenuto del file da leggere 
+              SYSCALL_EXIT("readn", notused, readn(connfd, buftmp, lentmp*sizeof(char)), "read", "");//leggo il contenuto del file
+              
+               if(newFile->buffer == NULL) 
+               { //file vuoto, prima scrittura
+                  newFile->length = lentmp;
+                  newFile->buffer = buftmp;
+                } 
+              else
+              {
+                fprintf(stderr, "scrittura in append\n");
+                newFile->buffer = realloc(newFile->buffer, sizeof(char) * (lentmp + newFile->length));
+                for(int i = 0; i < lentmp; i++)
+                  newFile->buffer[i + newFile->length] = buftmp[i];
+                newFile->length+=lentmp;
+              }
+              
+              risposta = 0;//successo  
+              
+              fprintf(stderr, "risposta %d\n", risposta);
+              //fprintf(stderr, "STO STAMPANDO LA CODA\n");
+              printQueueFiles(queueFiles);//debug
+                
+              if (writen(connfd, &risposta, sizeof(int))<=0) { perror("ERRORE SCRITTURA RISPOSTA SERVER"); } //scrivo nel client il risultato dell'operazione
+            }
+          }
         }
         break;
       }
@@ -233,10 +274,18 @@ static void* threadF(void* arg) //funzione dei thread worker
         else//il file esiste nella coda
         {
           fileRam *tmpfileramtrash = esiste->data;
-          spazioOccupato-= tmpfileramtrash->length;
-          risposta = removeFromQueue(&queueFiles, esiste);
+          if(tmpfileramtrash->is_locked != connfd) 
+          { //file esiste ma non lockato
+            fprintf(stderr, "File %s non rimosso dal server perchè non aperto dal client\n", parametro);
+            risposta = -1;
+          } 
+          else
+          { //file esiste e lockato, deve essere rimosso
+            spazioOccupato-= tmpfileramtrash->length;
+            risposta = removeFromQueue(&queueFiles, esiste);
+            fprintf(stderr, "file %s rimosso con successo dal server\n", parametro);
+          }
           
-          fprintf(stderr, "file %s rimosso con successo dal server\n", parametro);
           pthread_mutex_unlock(&mutexQueueFiles);
           
         }
@@ -250,15 +299,24 @@ static void* threadF(void* arg) //funzione dei thread worker
         pthread_mutex_lock(&mutexQueueFiles);
         Node* esiste = fileExistsServer(queueFiles, parametro);
         int len; //RISPOSTA che ci dice se è tutto ok o no
-        if(esiste != NULL) 
-        { //file esistente nel server
-          fileRam *filetmp = esiste->data;
-          len = filetmp->length;
-          char* buf = filetmp->buffer;
-          //fprintf(stderr, "sto inserendo %d\n", len);
-          if (writen(connfd, &len, sizeof(int))<=0) { perror("ERRORE LUNGHEZZA"); }//leggo il contenuto del file
-          if (writen(connfd, buf, len * sizeof(char))<=0) { perror("ERRORE LETTURA CONTENUTO FILE"); }
-          fprintf(stderr, "file %s letto con successo dal server\n", parametro);
+        if(esiste != NULL)//se il file esiste 
+        {
+           fileRam *filetmp = esiste->data;
+           if(filetmp->is_locked == connfd) //file aperto da quel client
+           { 
+              len = filetmp->length;
+              char* buf = filetmp->buffer;
+              //fprintf(stderr, "sto inserendo %d\n", len);
+              if (writen(connfd, &len, sizeof(int))<=0) { perror("ERRORE LUNGHEZZA"); }//leggo il contenuto del file
+              if (writen(connfd, buf, len * sizeof(char))<=0) { perror("ERRORE LETTURA CONTENUTO FILE"); }
+              fprintf(stderr, "file %s letto con successo dal server\n", parametro);
+           }
+           else
+           {
+              len = -1;//errore
+              if (writen(connfd, &len, sizeof(int))<=0) { perror("ERRORE SCRITTURA RISPOSTA"); }
+              fprintf(stderr, "file %s NON letto dal server, non aperto da quel client\n", parametro);
+           }
           pthread_mutex_unlock(&mutexQueueFiles);
         } 
         else
@@ -291,15 +349,15 @@ static void* threadF(void* arg) //funzione dei thread worker
           buftmp = malloc(sizeof(char) * strlen(fileramtmp->nome));
           strcpy(buftmp, fileramtmp->nome);
           int buftmplen = strlen(buftmp);
-          if (writen(connfd, &buftmplen, sizeof(int))<=0) { perror("c"); }
-          if (writen(connfd, buftmp, buftmplen * sizeof(char))<=0) { perror("x"); }
+          if (writen(connfd, &buftmplen, sizeof(int))<=0) { perror("ERRORE SCRITTURA LUNGHEZZA BUFFER"); }
+          if (writen(connfd, buftmp, buftmplen * sizeof(char))<=0) { perror("ERRORE SCRITTURA BUFFER"); }
           fprintf(stderr, "sto mandando il file %s al client\n", buftmp);
           free(buftmp);
           nodetmp = nodetmp->next;
         }
         break;
       }
-      case 'e': 
+      case 'o': 
       { //openFile
         fprintf(stderr, "ho ricevuto un comando di esistenza di un file %s nel server\n", parametro);
         int risposta;
@@ -324,20 +382,28 @@ static void* threadF(void* arg) //funzione dei thread worker
               //vanno fatte FREE
             }
             //creo un file vuoto
-            fileRam *newfile = malloc(sizeof(fileRam));
-            newfile->nome = malloc(sizeof(char) * (strlen(basename(parametro)) + 1));//uso il base name per avere solo il nome del file senza path assoluto
-            strcpy(newfile->nome, basename(parametro));
-            newfile->nome[strlen(basename(parametro))] = '\0';
-            newfile->length = 0;
-            newfile->buffer = NULL;
-            push(&queueFiles, newfile);
+            fileRam *newFile = malloc(sizeof(fileRam));
+            newFile->nome = malloc(sizeof(char) * (strlen(basename(parametro)) + 1));//uso il base name per avere solo il nome del file senza path assoluto
+            strcpy(newFile->nome, basename(parametro));
+            newFile->nome[strlen(basename(parametro))] = '\0';
+            newFile->length = 0;
+            newFile->buffer = NULL;
+            newFile->is_locked = connfd;
+            push(&queueFiles, newFile);
             risposta = 0;//successo
           }
           else
           { 
             if(esiste != NULL && flags == 0) 
             { //deve aprire il file, che esiste già
-              risposta = 0;
+              fileRam *fileramtmp = esiste->data;
+              if(fileramtmp->is_locked != -1)//il file è gia stato aperto da un altro client 
+                risposta = -1;//quindi do errore perchè devo aspettare di trovarlo chiuso
+              else//il file è chiuso allora lo posso aprire
+              {
+                fileramtmp->is_locked = connfd;
+                risposta = 0;//successo
+              }
             }
             else
             {
@@ -348,13 +414,42 @@ static void* threadF(void* arg) //funzione dei thread worker
             }
           }
           pthread_mutex_unlock(&mutexQueueFiles);
-          if (writen(connfd, &risposta, sizeof(int))<=0) { perror("c"); }
+          if (writen(connfd, &risposta, sizeof(int))<=0) { perror("ERRORE SCRITTURA RISPOSTA"); }
+          fprintf(stderr, "ho finito la open di %s\n", parametro);
+          break;
         }   
       }
-      
+      case 'z': 
+      { //closeFile
+        int risposta;
+        pthread_mutex_lock(&mutexQueueFiles);
+        Node* esiste = fileExistsServer(queueFiles, parametro);
+        if(esiste == NULL) 
+        { //file da chiudere non esiste nel server
+          pthread_mutex_unlock(&mutexQueueFiles);
+          risposta = -1;
+        } 
+        else 
+        { //file da chiudere esiste nel server
+          fileRam *fileramtmp = esiste->data;
+          if(fileramtmp->is_locked != connfd) 
+          { //errore: file non aperto da quel client
+            risposta = -1;
+          } 
+          else
+          { //chiudo il file
+            fileramtmp->is_locked = -1;
+            risposta = 0; //successo
+          }
+          pthread_mutex_unlock(&mutexQueueFiles);
+        }
+        if (writen(connfd, &risposta, sizeof(int))<=0) { perror("ERRORE SCRITTURA RISPOSTA"); }
+        break;
+      }
     }
 
     FD_SET(connfd, &set);
+    fprintf(stderr, "num thread %d, connfd %ld\n", *numThread, connfd);
     write(p[*numThread][1], "vai", 3);
 
   }
@@ -456,18 +551,19 @@ int main(int argc, char* argv[])
 
         if(isPipe(numWorkers,connfd,p)) //controllo se è una pipe
         {
-   //       fprintf(stderr, "è una pipe\n");
+          //fprintf(stderr, "è una pipe\n");
           char* buftmp;
           read(connfd, buftmp, 3);
+          fprintf(stderr,"leggo buf %s dal pipe\n",buftmp);
           continue;
         }
           
 
-
+        fprintf(stderr, "ho ricevuto una nuova richiesta da %ld\n", connfd);
         FD_CLR(connfd, &set);//levo il bit nella set perchè sto gestendo la richiesta di connfd
         
         msg_t str;
-        int err =readn(connfd, &str.len, sizeof(int));
+        int err = readn(connfd, &str.len, sizeof(int));
         if(err == 0) //socket vuoto
         {
           fprintf(stderr, "client disconnesso\n");
@@ -479,7 +575,7 @@ int main(int argc, char* argv[])
         str.len = str.len - sizeof(char);
         //togliamo sizeof(char) perchè nella read al comando prima stiamo leggendo già un carattere
         if (readn(connfd, &str.comando, sizeof(char))<=0) { fprintf(stderr, "ERRORE LETTURA COMANDO\n"); }
-
+        fprintf(stderr, "stampo il comando %c str.comando\n",str.comando);
         str.arg = calloc((str.len), sizeof(char));
         if (!str.arg) 
         {

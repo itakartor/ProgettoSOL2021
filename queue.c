@@ -138,7 +138,7 @@ Node* fileExistsServer(Queue *q, char* nomefile)
   while(tmp != NULL) 
   {
     no = tmp->data;
-    fprintf(stderr,"nome file nella coda %s\n",no->nome);
+    //fprintf(stderr,"nome file nella coda %s\n",no->nome);
     if(strcmp(basename(nomefile), no->nome) == 0) 
     {
       return tmp;
@@ -146,6 +146,29 @@ Node* fileExistsServer(Queue *q, char* nomefile)
     tmp = tmp->next;
   }
   return NULL;
+}
+void* returnFirstEl(Queue *q) {//ritorna il primo elemento senza eliminarlo dalla coda
+  if(q->head == NULL) { //la lista è già vuota
+    //fprintf(stderr, "lista vuota");
+    return NULL;
+  } else {
+    void *ret = (q->head)->data;
+    return ret;
+  }
+}
+void* pop2(Queue **q) { //restituisce il secondo elemento e lo rimuove dalla queue
+  if((*q)->head == NULL) { //la lista è già vuota
+    //fprintf(stderr, "lista vuota");
+    return NULL;
+  } else {
+    Node* firstel = (*q)->head;
+    Node *secondel = firstel->next;
+    void* ret = secondel->data;
+    firstel->next = secondel->next;
+    (*q)->len--;
+    free(secondel);
+    return ret;
+  }
 }
 
 //#endif

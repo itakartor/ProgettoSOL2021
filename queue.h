@@ -36,9 +36,9 @@ typedef struct _Queue {
 
 typedef struct _file {
   char* nome;
-  long size;
   char* buffer; //contenuto
   long length; //per fare la read e la write, meglio se memorizzato
+  int is_locked;
 } fileRam;
 
 void push(Queue **q, void* el);
@@ -50,4 +50,6 @@ void push(Queue **q, void* el);
 void printQueueFiles(Queue *q);
 int removeFromQueue(Queue **q, Node* toDelete);
 Node* fileExistsServer(Queue *q, char* nomefile);
+void* returnFirstEl(Queue *q);
+void* pop2(Queue **q);
 #endif
