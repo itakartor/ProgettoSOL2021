@@ -250,8 +250,9 @@ static void* threadF(void* arg) //funzione dei thread worker
               risposta = 0;//successo  
               
               fprintf(stderr, "risposta %d\n", risposta);
-              //fprintf(stderr, "STO STAMPANDO LA CODA\n");
+              fprintf(stderr, "\n\nSTO STAMPANDO LA CODA\n");
               printQueueFiles(queueFiles);//debug
+              fprintf(stderr, "\n\n");
                 
               if (writen(connfd, &risposta, sizeof(int))<=0) { perror("ERRORE SCRITTURA RISPOSTA SERVER"); } //scrivo nel client il risultato dell'operazione
             }
@@ -284,6 +285,8 @@ static void* threadF(void* arg) //funzione dei thread worker
             spazioOccupato-= tmpfileramtrash->length;
             risposta = removeFromQueue(&queueFiles, esiste);
             fprintf(stderr, "file %s rimosso con successo dal server\n", parametro);
+            fprintf(stderr, "risposta: %d\n", risposta);
+             
           }
           
           pthread_mutex_unlock(&mutexQueueFiles);
@@ -428,6 +431,7 @@ static void* threadF(void* arg) //funzione dei thread worker
         { //file da chiudere non esiste nel server
           pthread_mutex_unlock(&mutexQueueFiles);
           risposta = -1;
+          fprintf(stderr, "il file non esiste!!\n");
         } 
         else 
         { //file da chiudere esiste nel server
@@ -435,6 +439,7 @@ static void* threadF(void* arg) //funzione dei thread worker
           if(fileramtmp->is_locked != connfd) 
           { //errore: file non aperto da quel client
             risposta = -1;
+            fprintf(stderr, "Sto aprendo il file con un client diverso\n");
           } 
           else
           { //chiudo il file
@@ -554,7 +559,7 @@ int main(int argc, char* argv[])
           //fprintf(stderr, "è una pipe\n");
           char* buftmp;
           read(connfd, buftmp, 3);
-          fprintf(stderr,"leggo buf %s dal pipe\n",buftmp);
+          //fprintf(stderr,"leggo buf %s dal pipe\n",buftmp);
           continue;
         }
           
@@ -564,6 +569,7 @@ int main(int argc, char* argv[])
         
         msg_t str;
         int err = readn(connfd, &str.len, sizeof(int));
+        //fprintf(stderr, "ho letto la lunghezza del comando %d\n", str.len);//debug
         if(err == 0) //socket vuoto
         {
           fprintf(stderr, "client disconnesso\n");

@@ -134,16 +134,18 @@ int writeCMD(const char* pathname, char cmd)
   //manca gestione errore
   int notused;
   char *buffer = NULL;
-  char* towrite = malloc(sizeof(char) * (strlen(pathname) + 2)); //alloco la stringa per la stringa comando da mandare al server con terminatore
+  int lenPath = strlen(pathname);
+  char* towrite = malloc(sizeof(char) * (lenPath + 2)); //alloco la stringa per la stringa comando da mandare al server con terminatore
   towrite[0] = cmd;
-  for(int i = 1; i <= strlen(pathname); i++)
+  for(int i = 1; i <= lenPath; i++)
     towrite[i] = pathname[i - 1];
-  towrite[strlen(pathname) + 1] = '\0';//metto il terminatore
+  towrite[lenPath + 1] = '\0';//metto il terminatore
   fprintf(stderr, "sto scrivendo nel socket %s, nome file originale %s\n", towrite, pathname); //debug
-  int n = strlen(towrite) + 1; //terminatore
+  int n = lenPath + 2; //terminatore
 
   SYSCALL_EXIT("writen", notused, writen(sockfd, &n, sizeof(int)), "write", ""); //scrivo il comando "semplice" al server
   SYSCALL_EXIT("writen", notused, writen(sockfd, towrite, n * sizeof(char)), "write", "");
+  fprintf(stderr, "ho finito di scrivere nel socket\n"); //debug
 }
 
 int closeFile(const char* pathname) {
@@ -156,6 +158,8 @@ int closeFile(const char* pathname) {
   writeCMD(pathname, 'z');
   int risposta, notused;
   SYSCALL_EXIT("readn", notused, readn(sockfd, &risposta, sizeof(int)), "read", "");//leggo la risposta del server che sta "chiudendo il file"
+  fprintf(stderr, "ho finito di leggere la risposta di chiusura\n"); //debug
+
   if(risposta == -1) 
   {
     fprintf(stderr, "closeFile del file %s fallita\n", pathname);
@@ -192,7 +196,7 @@ int removeFile(const char* pathname)
   writeCMD(pathname,'c');//utilizzo il comando 'c' 
   int risposta, notused;//risposta è il risultato del server per controllare le corrette condizioni di esecuzione
   SYSCALL_EXIT("readn", notused, readn(sockfd, &risposta, sizeof(int)), "read", "");
-  if(risposta != 0) { perror("ERRORI RIMOZIONE"); return -1; }//controllo se ho rimosso in modo corretto il file
+  if(risposta == -1) { perror("ERRORI RIMOZIONE"); return -1; }//controllo se ho rimosso in modo corretto il file
   fprintf(stderr, "File %s cancellato con successo dal server\n", pathname);//debug 
   
   return 0;//se va tutto bene ritorna 0
@@ -302,6 +306,7 @@ int writeFile(const char* pathname) //scrivo un file nel server
   
   int risposta;
   SYSCALL_EXIT("readn", notused, readn(sockfd, &risposta, sizeof(int)), "read", "");
+  fprintf(stderr, "Ho letto nel socket la risposta di scrittura\n");
   if(risposta == -1) 
   {
     fprintf(stderr, "Errore: il file %s non esiste o non è stato aperto\n", pathname);
@@ -349,7 +354,7 @@ int EseguiComandoClient(NodoComando *tmp)
     if(openFile(tmp->name, 0) != -1)
     {
       removeFile(tmp->name);
-      closeFile(tmp->name);
+      //closeFile(tmp->name);
     }
   }
   else
