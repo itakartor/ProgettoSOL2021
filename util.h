@@ -5,6 +5,10 @@
 	exit(errno_copy);			\
     }
 
+#define ec_meno1(c, s) if((c) == -1){ perror(s); exit(EXIT_FAILURE); }
+#define neq_zero(c, s) if((c) != 0){ perror(s); exit(EXIT_FAILURE); }
+#define ec_null(c, s) if((c) == NULL) { perror(s); exit(EXIT_FAILURE); }
+
 int updatemax(fd_set set, int fdmax);
 
 int isNumber(const char* s, int* n);

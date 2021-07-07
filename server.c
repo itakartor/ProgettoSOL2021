@@ -93,8 +93,10 @@ void parserFile(void) {   //parser del file
     if(strcmp(tmp[0], NUMEROFILE) == 0)//numero massimo di file
     {
       //fprintf(stderr,"questo è il risultato dello numero file %d\n", isNumber(tmp[1],&numeroFile));
-      if(!isNumber(tmp[1], &numeroFile)) {
-      } else {
+      if(!isNumber(tmp[1], &numeroFile)) 
+      {}
+      else
+      {
         perror("errato config.txt (isNumber)");
         exit(EXIT_FAILURE);
       }

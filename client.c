@@ -24,11 +24,11 @@
 #define MAXSTRING 100
 #define MAXPATH 1024
 #define SOCKNAME "mysock"
+#define MAXLENNUM 10
 long sockfd;
 
 static int add_to_current_time(long sec, long nsec, struct timespec* res)
 {
-    // TODO: maybe check its result
     clock_gettime(CLOCK_REALTIME, res);
     res->tv_sec += sec;
     res->tv_nsec += nsec;
@@ -77,53 +77,63 @@ int openConnection(const char* sockname, int msec, const struct timespec abstime
 
     // trying to connect
     int err = -1;
-    fprintf(stderr, "currtime %ld abstime %ld\n", curr_time.tv_sec, abstime.tv_sec);
+    if(verbose)
+      fprintf(stdout, "currtime %ld abstime %ld\n", curr_time.tv_sec, abstime.tv_sec);
     while( (err = connect(sockfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr))) == -1
-            && curr_time.tv_sec < abstime.tv_sec ){
-        //debug("connect didn't succeed, trying again...\n");
-        fprintf(stderr, "err4 %d\n", errno);
+            && curr_time.tv_sec < abstime.tv_sec )
+            {
+        fprintf(stderr, "[Errore Connessione]: %d\n", errno);
 
-        if( nanosleep(&wait_time, NULL) == -1){
+        if( nanosleep(&wait_time, NULL) == -1)
+        {
             sockfd = -1;
             return -1;
         }
-        if( clock_gettime(CLOCK_REALTIME, &curr_time) == -1){
+        if( clock_gettime(CLOCK_REALTIME, &curr_time) == -1)
+        {
             sockfd = -1;
             return -1;
         }
     }
 
-    if(err == -1) {
-        //debug("Could not connect to server. :(\n");
-
+    if(err == -1) 
+    {
         sockfd = -1;
         errno = ETIMEDOUT;
+        perrore("[Connessione]");
         return -1;
     }
 
-    //debug("Connected! :D\n");
-    fprintf(stderr, "mi sono connesso al server!\n");
+    if(verbose)
+      fprintf(stderr, "[Connessione]: Successo\n");
     return 0;
 }
 
-int closeConnection(const char* sockname){
-  if(sockname == NULL){
+int closeConnection(const char* sockname)
+{
+  if(sockname == NULL)
+  {
     errno = EINVAL;
+    perror("[Sockname]");
     return -1;
   }
     // wrong socket name
-  if(strcmp(sockname, SOCKNAME) != 0){
+  if(strcmp(sockname, SOCKNAME) != 0)
+  {
         // this socket is not connected
     errno = ENOTCONN;
+    perror("[Strcmp]");
     return -1;
   }
 
-  if( close(sockfd) == -1 ){
+  if( close(sockfd) == -1 )
+  {
     sockfd = -1;
+    perror("[Close]");
     return -1;
   }
-
-  fprintf(stderr, "Connessione chiusa\n");
+  if(verbose)
+    fprintf(stdout, "[Connessione]: Interrotta\n");
 
   sockfd = -1;
   return 0;
@@ -131,42 +141,59 @@ int closeConnection(const char* sockname){
 
 int writeCMD(const char* pathname, char cmd) 
 {//parte ricorrente per mandare il comando al server
-  //manca gestione errore
+   if(pathname == NULL)
+   {
+    errno = EINVAL;
+    perror("[Pathname]");
+    return -1;
+  }
+  
   int notused;
   char *buffer = NULL;
   int lenPath = strlen(pathname);
-  char* towrite = malloc(sizeof(char) * (lenPath + 2)); //alloco la stringa per la stringa comando da mandare al server con terminatore
-  towrite[0] = cmd;
+  char* Comando; //alloco la stringa per la stringa comando da mandare al server con terminatore
+  ec_null((Comando = malloc(sizeof(char) * (lenPath + 2))), "malloc");//+2 -> +1 per il flag e +1 per il terminatore
+  //compatto il comando scompattato dal parser per mandarlo al server
+  Comando[0] = cmd;//nella prima posizione c'è sempre il flag del comando per esempio:W
   for(int i = 1; i <= lenPath; i++)
-    towrite[i] = pathname[i - 1];
-  towrite[lenPath + 1] = '\0';//metto il terminatore
-  fprintf(stderr, "sto scrivendo nel socket %s, nome file originale %s\n", towrite, pathname); //debug
-  int n = lenPath + 2; //terminatore
+    Comando[i] = pathname[i - 1];
+  Comando[lenPath + 1] = '\0';//metto il terminatore
+  lenPath += 2; //terminatore
 
-  SYSCALL_EXIT("writen", notused, writen(sockfd, &n, sizeof(int)), "write", ""); //scrivo il comando "semplice" al server
-  SYSCALL_EXIT("writen", notused, writen(sockfd, towrite, n * sizeof(char)), "write", "");
-  fprintf(stderr, "ho finito di scrivere nel socket\n"); //debug
+  SYSCALL_EXIT("writen", notused, writen(sockfd, &lenPath, sizeof(int)), "write", ""); //scrivo il comando "semplice" al server
+  SYSCALL_EXIT("writen", notused, writen(sockfd, Comando, lenPath * sizeof(char)), "write", "");
+  if(verbose)
+    fprintf(stdout, "[Invio Comando]: Successo\n"); //debug
 }
 
-int closeFile(const char* pathname) {
+int closeFile(const char* pathname) 
+{
   if(pathname == NULL) 
   {
     errno = EINVAL;
+    perror("[Pathname]");
     return -1;
   }
 
-  writeCMD(pathname, 'z');
+  if(writeCMD(pathname, 'z') == -1) 
+  {
+    errno = EPERM;
+    perror("[writeCMD]");
+    return -1;
+  }
   int risposta, notused;
-  SYSCALL_EXIT("readn", notused, readn(sockfd, &risposta, sizeof(int)), "read", "");//leggo la risposta del server che sta "chiudendo il file"
-  fprintf(stderr, "ho finito di leggere la risposta di chiusura\n"); //debug
 
+  SYSCALL_EXIT("readn", notused, readn(sockfd, &risposta, sizeof(int)), "read", "");//leggo la risposta del server che sta "chiudendo il file"
+  
   if(risposta == -1) 
   {
+    errno = EPERM;
     fprintf(stderr, "closeFile del file %s fallita\n", pathname);
   } 
-  else 
+  else//risposta = 0
   {
-    fprintf(stderr, "ho chiuso il file %s\n", pathname);
+    if(verbose)
+      fprintf(stdout, "ho chiuso il file %s\n", pathname);
   }
   return risposta;
 }
@@ -176,28 +203,71 @@ int openFile(const char* pathname, int flags)//apertura di un file ram
   if((flags != 0 && flags != 1) || pathname == NULL) 
   { // i flag passate non sono valide (0 -> open | 1 -> open & create)
     errno = EINVAL;
+    perror("[OpenFile]");
     return -1;
   }
-  writeCMD(pathname, 'o');
+  if(writeCMD(pathname, 'o') == -1) 
+  {
+    errno = EPERM;
+    perror("[writeCMD]");
+    return -1;
+  }
   int risposta, notused;
   
   SYSCALL_EXIT("writen", notused, writen(sockfd, &flags, sizeof(int)), "write", "");//scrivo i flag dell'apertura file
 
   SYSCALL_EXIT("readn", notused, readn(sockfd, &risposta, sizeof(int)), "read", "");//leggo il risultato dell'apertura
   if(risposta == 0)
-    fprintf(stderr, "il file %s è stato creato con successo\n", pathname);
+  {
+    if(verbose)
+      fprintf(stdout, "il file %s è stato creato con successo\n", pathname);
+  }
   else
-    fprintf(stderr, "il file %s non è stato creato\n", pathname);
+  {
+    if(risposta == -2)
+    {
+      fprintf(stderr, "File %s già esistente nel server (openFile fallita)\n", pathname);
+      risposta = -1;
+    }
+    else
+    {
+        errno = EACCES;
+        fprintf(stderr, "il file %s non è stato creato\n", pathname);
+    }
+  }
   return risposta;
 }
 
 int removeFile(const char* pathname) 
 {
-  writeCMD(pathname,'c');//utilizzo il comando 'c' 
+  if(pathname == NULL) 
+  {
+    errno = EINVAL;
+    perror("[Pathname]");
+    return -1;
+  }
+  if(writeCMD(pathname, 'c') == -1) 
+  {
+    errno = EPERM;
+    perror("[writeCMD]");
+    return -1;
+  }
   int risposta, notused;//risposta è il risultato del server per controllare le corrette condizioni di esecuzione
+  
   SYSCALL_EXIT("readn", notused, readn(sockfd, &risposta, sizeof(int)), "read", "");
-  if(risposta == -1) { perror("ERRORI RIMOZIONE"); return -1; }//controllo se ho rimosso in modo corretto il file
-  fprintf(stderr, "File %s cancellato con successo dal server\n", pathname);//debug 
+  
+  //controllo se ho rimosso in modo corretto il file
+  if(risposta == -1) 
+  { 
+    errno = EACCES;
+    fprintf(stderr, "[Rimozione file]: %s Fallita\n", pathname);
+    return -1; 
+  }
+  else
+  {
+    if(verbose)
+      fprintf(stdout, "[Rimozione file]: %s Successo\n", pathname);//debug   
+  }
   
   return 0;//se va tutto bene ritorna 0
 }
@@ -205,8 +275,19 @@ int removeFile(const char* pathname)
 //non va con il sizet
 int readFile(const char* pathname, void** buf, int* size)//leggo il file al pathname e poi metto il contenuto nel buf
 {
-  //fprintf(stderr, "pathname a questo punto %s\n", pathname);
-  writeCMD(pathname, 'r');//utilizzo il comando 'r'
+   if(pathname == NULL) 
+   {
+    errno = EINVAL;
+    perror("[Pathname]");
+    return -1;
+  }
+  if(writeCMD(pathname, 'r') == -1) 
+  {
+    errno = EPERM;
+    perror("[writeCMD]");
+    return -1;
+  }
+
   int notused;
   int n;//intermediario pe il size
   SYSCALL_EXIT("readn", notused, readn(sockfd, &n, sizeof(int)), "read", "");
@@ -214,68 +295,109 @@ int readFile(const char* pathname, void** buf, int* size)//leggo il file al path
   //fprintf(stderr, "la size del file che sto provando ad allocare è %d\n", n);
   if(*size == -1) //se non riesco a trovare il file il server scriverà al client -1 per indicare l'errore
   {
-    fprintf(stderr, "file %s non esiste\n", pathname);//debug
+    errno = EPERM;
+    fprintf(stderr, "[Lettura file]: %s Fallita\n", pathname);//debug
     *buf = NULL;//metto il buff a NULL per evitare che provi a scrivere qualcosa nel buf
     *size = 0;
     return -1; //errore o file inesistente
   } 
   else 
   {
-    *buf = malloc(sizeof(char) * n);//alloco lo spazio del buffer per il contenuto del file
+    ec_null((*buf = malloc(sizeof(char) * n)), "malloc");//alloco lo spazio del buffer per il contenuto del file
     SYSCALL_EXIT("readn", notused, readn(sockfd, *buf, n * sizeof(char)), "read", "");//leggo il contenuto del file
-    //fprintf(stderr, "ho letto il file %s con contenuto\n %s\n", pathname, (char*)(*buf));
+    
+    if(verbose)
+    fprintf(stdout, "[Lettura file]: %s Successo\n", pathname);//debug
+    
     return 0; //successo
   }
 }
 
 int writeBufToDisk(const char* pathname, void* buf, int size) 
 {
-  FILE *f = fopen (pathname, "a"); //bisogna gestire gli errori 
-  fwrite(buf, 1, size, f);
-  fclose(f);
-  return 1;//successo
+  if(pathname == NULL || buf == NULL || size < 0) 
+  {//argomenti non validi 
+    errno = EINVAL;
+    perror("[writeBufToDisk]");
+    return -1;
+  }
+
+  FILE *f; //bisogna gestire gli errori 
+  ec_null((f = fopen(pathname, "w")), "fopen");
+  fwrite(buf, 1, size, f);//va cambiata con la write perchè non posso controllare l'errore
+  neq_zero((fclose(f)), "fclose");
+  return 0;//successo
 }
 
 int readNFiles(int n, const char* dirname) //int n è il numero dei file da leggere
 {
-  //DA FARE: CONTROLLARE SE DIRNAME = NULL, NEL CASO DARE ERRORE
-  char* ntmp = malloc(sizeof(char) * 10); //passo il numero come un carattere per riutilizzare il codice
-  sprintf(ntmp, "%d", n);//memorizzo il numero in ntmp
-  writeCMD(ntmp, 'R');
+  if(dirname == NULL) 
+  {
+    errno = EINVAL;
+    perror("[readNFiles]");
+    return -1;
+  }
+  char* ntmp; //passo il numero come un carattere per riutilizzare il codice
+  ec_null((ntmp = malloc(sizeof(char) * MAXLENNUM)), "malloc");
+  if(sprintf(ntmp, "%d", n) < 0) 
+  {//memorizzo il numero in ntmp come char
+    perror("[Snprintf]");
+    return -1;
+  }
+  if(writeCMD(ntmp, 'R') == -1) 
+  {
+    errno = EPERM;
+    perror("[writeCMD]");
+    return -1;
+  }
 
   int notused;
   SYSCALL_EXIT("readn", notused, readn(sockfd, &n, sizeof(int)), "read", "");//leggo dal socket del server il numero di file da leggere
   int lenpathtmp;                                                            //visto che potrebbero essere meno di quelli dichiarati dal parametro n
   char* buftmp;
-  char** arr_buf = malloc(sizeof(char*) * n); //tengo traccia dei path dei file per poi leggerli in un secondo momento
+  char** arr_buf; //tengo traccia dei path dei file per poi leggerli in un secondo momento
+  ec_null((arr_buf = malloc(sizeof(char*) * n)), "malloc");
   for(int i = 0; i < n; i++) 
   { //per ogni file da leggere dal server
     SYSCALL_EXIT("readn", notused, readn(sockfd, &lenpathtmp, sizeof(int)), "read", "");
-    buftmp = malloc(sizeof(char) * lenpathtmp);//passaggio in più inutile
+    ec_null((buftmp = malloc(sizeof(char) * lenpathtmp)), "malloc");//passaggio in più inutile
     SYSCALL_EXIT("readn", notused, readn(sockfd, buftmp, lenpathtmp * sizeof(char)), "read", "");
-    //fprintf(stderr, "leggo il file %s dal server\n", buftmp);
     arr_buf[i] = buftmp;//passaggio in più inutile posso direttamente allocare l'array e fargli salvare il contenuto in esso
   } 
-  fprintf(stderr, "\n\n\n STO STAMPANDO L'ARRAY \n\n\n");//debug
+  
   //prima mi ricavo tutti i nomi dei file da leggere e poi li leggo per evitare conflitti
   //nelle scritture/letture dei socket
+  
   for(int i = 0; i < n; i++) 
   {
-    fprintf(stderr, "elemento %d: %s\n", i, arr_buf[i]);//debug
+    //fprintf(stderr, "elemento %d: %s\n", i, arr_buf[i]);//debug
     void* buffile;
     int sizebufffile;
     if(openFile(arr_buf[i], 0) != -1)//gestione dell'errore
     {
-      readFile(arr_buf[i], &buffile, &sizebufffile);//leggo un singolo file preso dall'array dei file
+      if(readFile(arr_buf[i], &buffile, &sizebufffile) == -1) 
+      {//leggo un singolo file preso dall'array dei file
+        return -1;
+      }
       char path[MAXPATH];//dichiaro un path 
-      //fprintf(stderr, "fin qui ci siamo\n");
-      snprintf(path, sizeof(path), "%s/%s", dirname, arr_buf[i]);
-      fprintf(stderr, "fin qui ci siamo, dirname %s, path %s\n", dirname, path);//debug
-
-      writeBufToDisk(path, buffile, sizebufffile);//infine scrivo in append il contenuto del file
-      closeFile(arr_buf[i]);//infine chiudo il file
+      
+      if(snprintf(path, sizeof(path), "%s/%s", dirname, arr_buf[i]) < 0) 
+      { 
+        perror("[Snprintf]"); 
+        return -1; 
+        }
+   
+      if(writeBufToDisk(path, buffile, sizebufffile) == -1) { return -1; }//infine scrivo in append il contenuto del file
+      if(closeFile(arr_buf[i]) == -1) { return -1; }//infine chiudo il file
+    }
+    else
+    {
+      errno = EACCES;
+      fprintf(stderr, "[OpenFile]: %s Fallita\n", arr_buf[i]);
+      return -1;
     }
   }
+  return 0;
 }
 
 int appendToFile(const char* pathname, void* buf, int size) 
