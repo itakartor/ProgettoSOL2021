@@ -52,3 +52,21 @@ int isPipe(int numWorkers, int connfd, int ** p)
             return 0;  
         }
 }
+
+void Pthread_mutex_lock(pthread_mutex_t *mtx) {
+  int err;
+  if ( ( err=pthread_mutex_lock(mtx)) != 0 ) {
+    errno=err;
+    perror("pthread_mutex_lock");
+    exit(EXIT_FAILURE);
+  }
+}
+
+void Pthread_mutex_unlock(pthread_mutex_t *mtx) {
+  int err;
+  if ( ( err=pthread_mutex_unlock(mtx)) != 0 ) {
+     errno=err;
+     perror("pthread_mutex_unlock");
+     exit(EXIT_FAILURE);
+  }
+}

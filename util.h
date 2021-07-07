@@ -19,6 +19,9 @@ int isPipe(int numWorkers, int connfd, int ** p);
 
 //static inline int readn(long fd, void *buf, size_t size);
 
+void Pthread_mutex_lock(pthread_mutex_t *mtx);
+void Pthread_mutex_unlock(pthread_mutex_t *mtx);
+
 static inline int readn(long fd, void *buf, size_t size) 
 {
     size_t left = size;

@@ -135,6 +135,12 @@ int removeFromQueue(Queue **q, Node* toDelete)
 Node* fileExistsServer(Queue *q, char* nomefile) 
 { // controlla se un fileRam è gia presente nella codaFile del server
   //il nomefile è il pathname del file
+  if(q == NULL || nomefile == NULL) 
+  {
+    errno = EINVAL;
+    perror("[FileExistsServer]");
+    exit(EXIT_FAILURE);
+  }
   Node* tmp = q->head;
   fileRam *no = NULL;
   while(tmp != NULL) 

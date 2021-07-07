@@ -38,7 +38,8 @@ typedef struct _file {
   char* nome;
   char* buffer; //contenuto
   long length; //per fare la read e la write, meglio se memorizzato
-  int is_locked;
+  int is_opened;
+  pthread_mutex_t lock;
 } fileRam;
 
 Queue* initQueue();
