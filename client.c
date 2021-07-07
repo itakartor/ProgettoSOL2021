@@ -25,6 +25,7 @@
 #define MAXPATH 1024
 #define SOCKNAME "mysock"
 #define MAXLENNUM 10
+#define O_CREATE 1
 long sockfd;
 
 static int add_to_current_time(long sec, long nsec, struct timespec* res)
@@ -100,7 +101,7 @@ int openConnection(const char* sockname, int msec, const struct timespec abstime
     {
         sockfd = -1;
         errno = ETIMEDOUT;
-        perrore("[Connessione]");
+        perror("[Connessione]");
         return -1;
     }
 
@@ -402,46 +403,72 @@ int readNFiles(int n, const char* dirname) //int n è il numero dei file da legg
 
 int appendToFile(const char* pathname, void* buf, int size) 
 {
+  if(pathname == NULL) 
+  {
+    errno = EINVAL;
+    perror("[appendToFile]");
+    return -1;
+  }
+
   int notused;
-  fprintf(stderr, "length file %s: %d\n", pathname, size);
   SYSCALL_EXIT("writen", notused, writen(sockfd, &size, sizeof(int)), "write", "");
+  
   int cista;
   SYSCALL_EXIT("readn", notused, readn(sockfd, &cista, sizeof(int)), "read", "");
   if(!cista) 
   { //il file non sta nel server materialmente, neanche se si espellessero tutti i file
-    fprintf(stderr, "il file %s non sta materialmente nel server\n", pathname);
+    fprintf(stderr, "il file %s è troppo grande per la capienza del server\n", pathname);
       //vanno fatte delle FREE
     return -1;
   }
   SYSCALL_EXIT("writen", notused, writen(sockfd, (char*)buf, size * sizeof(char)), "write", "");
 
   int risposta;
-  SYSCALL_EXIT("readn", notused, readn(sockfd, &risposta, sizeof(int)), "read", "");
-  printf("result: %d\n", risposta);
-  return 0;
+  SYSCALL_EXIT("readn", notused, readn(sockfd, &risposta, sizeof(int)), "read", "");//lettura per controllare se la scrittura in append è stata eseguita
+  if(risposta == -1) 
+  {
+    errno = EACCES;
+    fprintf(stderr, "Errore nella scrittura in append del file %s\n", pathname);
+  } 
+  else
+  {
+    if(verbose)
+      fprintf(stdout, "File %s scritto correttamente nel server\n", pathname);
+  }
+  return risposta;
 }
 
 int writeFile(const char* pathname) //scrivo un file nel server 
 {
-  int notused, n;//n è la lunghezza del buffer nel quale salvo le risposte del server 
-  writeCMD(pathname, 'W');
+  if(pathname == NULL) 
+  {
+    errno = EINVAL;
+    perror("[writeFile]");
+    return -1;
+  }
   
-  int risposta;
+  if(writeCMD(pathname, 'W') == -1) 
+  {
+    errno = EPERM;
+    perror("[writeCMD]");
+    return -1;
+  }
+  int notused, lenBuf, risposta;//n è la lunghezza del buffer nel quale salvo le risposte del server 
   SYSCALL_EXIT("readn", notused, readn(sockfd, &risposta, sizeof(int)), "read", "");
-  fprintf(stderr, "Ho letto nel socket la risposta di scrittura\n");
+  
   if(risposta == -1) 
   {
-    fprintf(stderr, "Errore: il file %s non esiste o non è stato aperto\n", pathname);
+    fprintf(stderr, "[OpenFile]: %s Fallita\n", pathname);
     return -1;
   } 
   else//se non ci sono problemi durante la creazione del file o l'apertura
   {
     char *buffer = NULL;
-    n = strlen(pathname) + 2; //+2 per il comando e il terminatore
-    buffer = realloc(buffer, n*sizeof(char));
-    if (!buffer) { perror("realloc"); fprintf(stderr, "Memoria esaurita....\n"); return -1;}
+    lenBuf = strlen(pathname) + 2; //+2 per il comando e il terminatore
+    ec_null((buffer = realloc(buffer, lenBuf * sizeof(char))), "realloc");
 
-    FILE * f = fopen (pathname, "rb");
+    FILE * f; //va cambiata la fopen e le funzioni con la f
+    ec_null((f = fopen(pathname, "rb")), "fopen");
     //questa parte recupera la lunghezza e il contenuto di un file potrei pure metterlo in una funzione
     long length;
     char* bufferFile;
@@ -455,10 +482,11 @@ int writeFile(const char* pathname) //scrivo un file nel server
       {
         fread (bufferFile, 1, length, f);
       }
-      fclose (f);
+       neq_zero((fclose(f)), "fclose");
     }
 
-    appendToFile(pathname, bufferFile, length);
+    if(appendToFile(pathname, bufferFile, length) == -1)
+      return -1;
   }
   return 0;//successo
 }
@@ -467,74 +495,100 @@ int EseguiComandoClient(NodoComando *tmp)
 {
   if(tmp == NULL)
   {
-      perror("tmp NULL");
+      errno = EINVAL;
+      perror("[EseguiComandoClient]");
       return -1; //errore: tmp non può e non deve essere NULL. 
   }
   if(tmp->cmd == 'c')//gestisco il comando con c per eliminare il file dal server
   {
-    fprintf(stderr, "file da rimuovere %s\n", tmp->name);
+    if(verbose)
+      fprintf(stdout, "[Rimozione File]: %s in corso\n", tmp->name);
     if(openFile(tmp->name, 0) != -1)
     {
-      removeFile(tmp->name);
-      //closeFile(tmp->name);
+      if(removeFile(tmp->name) == -1) 
+        return -1;
+    }
+    else//errore openFile
+    {
+      return -1;
     }
   }
   else
   { 
     if(tmp->cmd == 'r')
     {
-      fprintf(stderr, "sto eseguendo r\n");//debug
+      if(verbose)
+        fprintf(stdout, "[Lettura file]: %s in corso\n",tmp->name);//debug
       if(openFile(tmp->name, 0) != -1)
       {
         void* buf;
-        int sizebuff; //col size_t non va
-        readFile(tmp->name, &buf, &sizebuff); //manca gestione errore
-        if(savefiledir != NULL && buf != NULL) //se le condizioni sono corrette leggo il file
+        int sizebuff; //risolvere problema size_t
+        if(readFile(tmp->name, &buf, &sizebuff) == -1) 
         {
-          char path[MAXPATH];
-          snprintf(path, sizeof(path), "%s/%s", savefiledir, tmp->name);
-          //fprintf(stderr, "sto andando a scrivere il file %s in %s\n", tmp->name, path);
-          writeBufToDisk(path, buf, sizebuff);
-          closeFile(tmp->name);
+          return -1;
         }
-        else // non ho una cartella per salvare il file oppure il buffer è vuoto(però se è vuoto dovrebbe ugualmente fare qualcosa)
+        else
         {
-            perror("read");
+          if(savefiledir != NULL && buf != NULL) //se le condizioni sono corrette leggo il file
+          {
+            char path[MAXPATH];
+            snprintf(path, sizeof(path), "%s/%s", savefiledir, tmp->name);
+            //fprintf(stderr, "sto andando a scrivere il file %s in %s\n", tmp->name, path);
+            writeBufToDisk(path, buf, sizebuff);
+            closeFile(tmp->name);
+          }
+          else // non ho una cartella per salvare il file oppure il buffer è vuoto
+          {
             return -1; //errore
-        }
-      }
+          }
+        } 
+      }//se l'openFile ha un errore
       else
       {
-          perror("openfile");
-          return -1;
+        return -1;
       }
-      //fprintf(stderr,"buffer:::%s\n",(char*)buf);
     } 
-    else
+    else//lettura di n file
     {
-      if(tmp->cmd == 'R')//lettura di n file
+      if(tmp->cmd == 'R')
       {
-        fprintf(stderr, "comando readNFiles con n = %d\n", tmp->n);//debug
-        readNFiles(tmp->n, savefiledir);
+        if(verbose)
+          fprintf(stdout, "[Lettura n File]: %d in corso\n", tmp->n);//debug
+        if(readNFiles(tmp->n, savefiledir) == -1) 
+          return -1;
       } 
       else
       { 
         if(tmp->cmd == 'W') 
         {
-          fprintf(stderr, "comando W con parametro %s\n", tmp->name);//debug
-          if(openFile(tmp->name, 1) != -1)//flag: apri e crea
+          if(verbose)
+            fprintf(stdout, "[Scrittura file]: %s in corso\n", tmp->name);//debug
+          if(openFile(tmp->name, O_CREATE) != -1)//flag = O_CREATE = 1 devo creare il file e crearlo
           {
-            writeFile(tmp->name);//se non riesce ad aprire il file non lo scrive neanche
-            closeFile(tmp->name);
+            if(writeFile(tmp->name) == -1) 
+              return -1; 
+            if(closeFile(tmp->name) == -1)
+              return -1; 
           } 
           else
           {
-            if(openFile(tmp->name, 0) != -1) //flag: apri (magari il file esiste già)
+            if(openFile(tmp->name, 0) != -1) //flag = 0 è come se non avessi flag quindi devo provare ad aprire il file
             { 
-              writeFile(tmp->name);
-              closeFile(tmp->name);
+              if(writeFile(tmp->name) == -1) 
+                return -1; 
+              if(closeFile(tmp->name) == -1)
+                return -1; 
+            }
+            else//OpenFile non riuscita
+            {
+              return -1;
             }
           } 
+        }
+        else
+        {
+          fprintf(stderr, "Errore: parametro %c non riconosciuto\n", tmp->cmd);
+          return -1;
         }
       }
     }
@@ -543,23 +597,29 @@ int EseguiComandoClient(NodoComando *tmp)
 }
 
 
-void visitaRicorsiva(char* name, int *n, Queue **q)//name è il nome del path e n è il numero dei file 
+int visitaRicorsiva(char* name, int *n, Queue **q)//name è il nome del path e n è il numero dei file 
 { //alcuni file hanno problemi 
   //fprintf(stderr, "sto visitando %s\n", name);
   if(name == NULL)//se il path name non è corretto
-    return;
+    return -1;
   char buftmp[MAXPATH];
   if (getcwd(buftmp, MAXPATH)==NULL)//prendendo il pathname della directory attuale
-  { perror("getcwd");  exit(EXIT_FAILURE); }
+  { 
+    perror("getcwd"); 
+    return -1; 
+  }
   
   if (chdir(name) == -1)//cambio la directory corrente
-   { perror("chdir visitaRicorsiva"); fprintf(stderr, "errno %d visitando %s\n", errno, name);  exit(EXIT_FAILURE); }
+  { 
+    perror("chdir visitaRicorsiva"); 
+    return -1; 
+  }
  
   DIR *dir;
   struct dirent *entry;
 
   if (!(dir = opendir(name)))//se non si riesce ad aprire la dir
-      return;
+    return -1;
 
   while ((entry = readdir(dir)) != NULL && (*n != 0))//apro la dir e vedo n != 0 perchè in caso dovrei fermarmi
   {
@@ -570,9 +630,14 @@ void visitaRicorsiva(char* name, int *n, Queue **q)//name è il nome del path e 
       if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0 || entry->d_name[0] == '.')
         continue;
         
-        snprintf(path, sizeof(path), "%s/%s", name, entry->d_name);//va a scrivere nel path l'entry->d_name che sto visitando 
+        if(snprintf(path, sizeof(path), "%s/%s", name, entry->d_name) < 0) 
+        {//va a scrivere nel path l'entry->d_name che sto visitando
+          perror("snprintf"); 
+          return -1; 
+        } 
         
-        visitaRicorsiva(path, n, q);//riparte la visita ricorsiva nella stessa dir
+        if(visitaRicorsiva(path, n, q) == -1)//riparte la visita ricorsiva nella stessa dir
+          return -1;
     } 
     else
     { 
@@ -580,25 +645,28 @@ void visitaRicorsiva(char* name, int *n, Queue **q)//name è il nome del path e 
       {
         if(*n > 0 || *n == -1) 
         {
-          char buffer[MAXPATH];
-          realpath(entry->d_name, buffer); //prendo il path assoluto del file per reperire il file
-          //printf("%*s- %s, realpath %s\n", 0, "", entry->d_name, buffer);
-
-          NodoComando *new = malloc(sizeof(NodoComando));//vado a gestire il -w attraverso la chiamata -W
+          char *buffer;
+          ec_null((buffer = malloc(sizeof(char) * MAXPATH)), "malloc");
+          ec_null((realpath(entry->d_name, buffer)), "realpath");//prendo il path assoluto del file per reperire il file
+          
+          NodoComando *new;//vado a gestire il -w attraverso la chiamata -W
+          ec_null((new = malloc(sizeof(NodoComando))), "malloc");
           new->cmd = 'W';
-          new->name = malloc(sizeof(char) * (strlen(buffer)+1));
+          ec_null((new->name = malloc(sizeof(char) * (strlen(buffer)+1))), "malloc");
           strcpy(new->name, buffer);
           new->name[strlen(buffer)] = '\0';
           new->n = 0;
-          push(q, new);
+          if(push(q, new) == -1) 
+            return -1;
         }
         if(*n > 0)//se solo se n>0 lo decremento
           (*n)--;
       }
     }
   }
-  closedir(dir);//chiudo la directory
-  if (chdir(buftmp) == -1) { perror("chdir buff temporaneo");  exit(EXIT_FAILURE); }
+  ec_meno1((closedir(dir)), "closedir");
+  ec_meno1((chdir(buftmp)), "chdir");
+  return 0;
 }
 
 int main(int argc, char *argv[]) 
@@ -610,16 +678,17 @@ int main(int argc, char *argv[])
   //primo parametro: tempo limite (in secondi)
   //secondo parametro: intervallo di tempo tra due connessioni (in millisecondi)
 
-  int x = openConnection(SOCKNAME, 0, abstime); //da vedere se da errore
+  ec_meno1((openConnection(socknameconfig, 1000, abstime)), "openConnection"); //da vedere se da errore
   abstime.tv_sec = timems / 1000;
   abstime.tv_nsec = (timems % 1000) * 1000000;
-  fprintf(stderr, "sockfd: %ld, risultato openconnection %d\n", sockfd, x);
-
 
   while(q->len > 0) 
   { //finchè ci sono richieste che il parser ha visto
     NodoComando *tmp = pop(&q);
     nanosleep(&abstime, NULL);
+     if(verbose)
+      fprintf(stdout, "[Lettura Comando]: '%c' - %s in corso\n", tmp->cmd, tmp->name);
+    
     if(tmp->cmd == 'w') 
     { //fa una richiesta speciale in modo ricorsivo sfruttando il comando W
       if(tmp->n == 0)
@@ -628,15 +697,18 @@ int main(int argc, char *argv[])
       if(strcmp(tmp->name, ".") == 0)//se passo come dir "." metto il path reale
       {
         free(tmp->name);
-        tmp->name = malloc(sizeof(char) * MAXPATH);
-        
-        if (getcwd(tmp->name, MAXPATH) == NULL) { perror("getcwd realpath main");  exit(EXIT_FAILURE); }
+        ec_null((tmp->name = malloc(sizeof(char) * MAXPATH)), "malloc");
+        ec_null((getcwd(tmp->name, MAXPATH)), "getcwd");
       }
-      visitaRicorsiva(tmp->name, &(tmp->n), &q);//però metto n=-1 per evitare il caso in cui n si decrementa fino a 0
+      if(visitaRicorsiva(tmp->name, &(tmp->n), &q) == -1) 
+        return -1;//però metto n=-1 per evitare il caso in cui n si decrementa fino a 0
     } 
     else
-      EseguiComandoClient(tmp);
+      if(EseguiComandoClientServer(tmp) == -1)
+        return -1;
   }
-  closeConnection(SOCKNAME);
+  if(closeConnection(socknameconfig) == -1) 
+    return -1;
+  
   return 0;
 }

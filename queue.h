@@ -41,12 +41,11 @@ typedef struct _file {
   int is_locked;
 } fileRam;
 
-void push(Queue **q, void* el);
 Queue* initQueue();
 void* pop(Queue **q);
 void printQueue(Queue *q);
 void insert(Queue **q, char cmd, char* name, int n);
-void push(Queue **q, void* el);
+int push(Queue **q, void* el);
 void printQueueFiles(Queue *q);
 int removeFromQueue(Queue **q, Node* toDelete);
 Node* fileExistsServer(Queue *q, char* nomefile);

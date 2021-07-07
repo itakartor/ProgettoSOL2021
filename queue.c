@@ -32,8 +32,9 @@ Queue* initQueue() { //inizializza una coda vuota
   return q;
 }
 
-void push(Queue **q, void* el) { //inserimento in coda in una FIFO
-  Node *n = malloc(sizeof(Node));
+int push(Queue **q, void* el) { //inserimento in coda in una FIFO
+  Node *n;
+  ec_null((malloc(sizeof(Node))), "malloc");
   n->data = el;
   n->next = NULL;
   //inserimento in coda
@@ -46,6 +47,7 @@ void push(Queue **q, void* el) { //inserimento in coda in una FIFO
     (*q)->tail = n;
     (*q)->len++; // = *q->len + 1;
   }
+  return 0;
 }
 
 void insert(Queue **q, char cmd, char* name, int n) { //crea il NodoComando e lo mette nella coda
