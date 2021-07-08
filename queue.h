@@ -45,8 +45,8 @@ typedef struct _file {
 Queue* initQueue();
 void* pop(Queue **q);
 void printQueue(Queue *q);
-void insert(Queue **q, char cmd, char* name, int n);
 int push(Queue **q, void* el);
+void insert(Queue **q, char cmd, char* name, int n);
 void printQueueFiles(Queue *q);
 int removeFromQueue(Queue **q, Node* toDelete);
 Node* fileExistsServer(Queue *q, char* nomefile);

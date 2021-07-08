@@ -32,25 +32,29 @@ Queue* initQueue() { //inizializza una coda vuota
   return q;
 }
 
-int push(Queue **q, void* el) { //inserimento in coda in una FIFO
-  Node *n;
-  ec_null((malloc(sizeof(Node))), "malloc");
-  n->data = el;
-  n->next = NULL;
+int push(Queue **q, void* el) //inserimento in coda in una FIFO
+{ 
+  Node *new;
+  ec_null(new = (malloc(sizeof(Node))), "malloc");
+  
+  new->data = el;
+  new->next = NULL;
   //inserimento in coda
-  if((*q)->head == NULL) { //inserimento in coda vuota
-    (*q)->head = n;
-    (*q)->tail = n;
+  if((*q)->len == 0) { //inserimento in coda vuota
+    (*q)->head = new;
+    (*q)->tail = new;
     (*q)->len = 1;
   } else { //inserimento in coda
-    ((*q)->tail)->next = n;
-    (*q)->tail = n;
+    ((*q)->tail)->next = new;
+    (*q)->tail = new;
     (*q)->len++; // = *q->len + 1;
   }
+  //fprintf(stderr,"esco dalla push");
   return 0;
 }
 
 void insert(Queue **q, char cmd, char* name, int n) { //crea il NodoComando e lo mette nella coda
+
   NodoComando *new = malloc(sizeof(NodoComando));
   new->cmd = cmd;
   if(name != NULL)
@@ -58,9 +62,13 @@ void insert(Queue **q, char cmd, char* name, int n) { //crea il NodoComando e lo
     new->name = malloc(sizeof(char)*strlen(name)); // abbiamo messo una malloc e la strcpy
     strncpy(new->name,name,strlen(name));
   }
-  //printf("sono il nome del file %s\n", new->name);
+  else
+  {
+          new->name = NULL;
+  }
   new->n = n;
   push(q, new);
+  //fprintf(stderr,"esco dalla push\n");
 }
 
 void* pop(Queue **q) { //restituisce la testa e la rimuove dalla queue

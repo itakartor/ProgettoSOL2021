@@ -22,8 +22,6 @@
 // limite sulla lunghezza della stringa passata come argomento
 #define MY_ARGV_MAX  512
 
-
-
 int arg_h()
 {
         fprintf(stdout, "%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n",
@@ -43,14 +41,22 @@ int arg_h()
         return 0;
 }
 
-int arg_f(char* optarg, Queue *q) 
+int arg_f(char* optarg) 
 {
-        //devo inserire il comando nella coda
-        insert(&q, 'f', optarg, 0);
+        
+        if(seenf == 1)
+        {
+            fprintf(stderr, "ERRORE: l'opzione -f va specificata una volta sola\n");
+            exit(EXIT_FAILURE);
+        }
+        seenf = 1;
+        ec_null((socknameconfig = malloc(sizeof(char) * strlen(optarg))), "malloc");
+        strcpy(socknameconfig, optarg);
+        //printf("filename %s\n", optarg);
         return 0;
 }
 
-int arg_w(char* optarg, Queue *q)
+int arg_w(char* optarg, Queue **q)
 {
         //compio l'optarg in una variabile temporanea arg
         char* arg = malloc(sizeof(char)*strlen(optarg));
@@ -93,33 +99,36 @@ int arg_w(char* optarg, Queue *q)
                         }
                 } 
         } 
-            insert(&q, 'w', dirname, num);
+            insert(q, 'w', dirname, num);
             //printQueue(q);
 
             free(arg);
             free(dirname);
             return 0;  
 }
-int arg_W(char* optarg, Queue* q)
+int arg_W(char* optarg, Queue** q)
 {
-        //printf("Sto guardando gli argomenti di -l\n");
 
-        char* arg = malloc(sizeof(char) * strlen(optarg));
-        strncpy(arg, optarg, strlen(optarg));
+        char* arg = malloc(sizeof(char) * strlen(optarg));//copio momentanemente l'argomento preso dalla getopt per evitare di conpromettere le prossime
+        strncpy(arg, optarg, strlen(optarg));             //modifiche all'input
 
         char* save = NULL;
         char* token = strtok_r(arg, ",", &save); // Attenzione: l’argomento stringa viene modificato!
-        while(token) {
-                //printf("%s\n", token);
-                insert(&q, 'W', token, 0);       //inserisco tanti comandi in coda quanti sono i file del comando -W file1,[file2]
+        while(token) 
+        {
+                fprintf(stderr,"sto inserendo nella coda \n");
+                        
+                insert(q, 'W', token, 0);//inserisco tanti comandi in coda quanti sono i file del comando -W file1,[file2]
+                
+                //fprintf(stderr,"sono qui\n");
                 token = strtok_r(NULL, ",", &save);
-            }
+        }
         free(arg);
-        //printQueue(q);
-        //printf("\n\n\n");               
+        //printQueue(*q);
+        //fprintf(stderr,"sto uscendo da W\n");       
         return 0;
 }
-int arg_r(char* optarg, Queue* q)
+int arg_r(char* optarg, Queue** q)
 {
         char* arg = malloc(sizeof(char) * strlen(optarg));
         strncpy(arg, optarg, strlen(optarg));
@@ -128,7 +137,7 @@ int arg_r(char* optarg, Queue* q)
         char* token = strtok_r(arg, ",", &save); // Attenzione: l’argomento stringa viene modificato!
         while(token) {
                 //printf("%s\n", token);
-                insert(&q, 'r', token, 0);       //inserisco tanti comandi in coda quanti sono i file del comando -W file1,[file2]
+                insert(q, 'r', token, 0);       //inserisco tanti comandi in coda quanti sono i file del comando -W file1,[file2]
                 token = strtok_r(NULL, ",", &save);
             }
         free(arg);
@@ -138,7 +147,7 @@ int arg_r(char* optarg, Queue* q)
         return 0;
 }
 
-int arg_R(char* argv[],int argc,Queue* q)
+int arg_R(char* argv[],int argc,Queue** q)
 {
         //R può avere opzionalmente una opzione, che è messa quindi facoltativa e parsata a parte
         //printf("guardo R\n");
@@ -171,7 +180,7 @@ int arg_R(char* argv[],int argc,Queue* q)
         //printf("\n\n\n");
         //printf("nfacoltativo ---->%d \n",nfacoltativo);
         seenR = 1;
-        insert(&q, 'R', NULL, nfacoltativo);
+        insert(q, 'R', NULL, nfacoltativo);
         //printf("caso R %d\n", nfacoltativo);
         //printQueue(q);
         return 0;    
@@ -183,15 +192,15 @@ int arg_d(char* optarg)
         strcpy(savefiledir, optarg);
         return 0;   
 }
-int arg_t(char* optarg, Queue* q) // controllo se l'argomento è un numero?
+int arg_t(char* optarg, Queue** q) // controllo se l'argomento è un numero?
 {
         timems = atoi(optarg);
-        insert(&q,'t',optarg, 0);
+        insert(q,'t',optarg, 0);
         return 0;
 }
-int arg_c(char* optarg, Queue* q)
+int arg_c(char* optarg, Queue** q)
 {
-        insert(&q,'c',optarg, 0);
+        insert(q,'c',optarg, 0);
         return 0;
 }
 int arg_p()
@@ -206,34 +215,36 @@ Queue* parser(char* argv[],int argc)
     verbose = 0;        
     int opt;
     Queue* q = initQueue();
+    if(q == NULL)
+       fprintf(stderr, "CODA VUOTA\n"); 
     while ((opt = getopt(argc,argv, "hf:w:W:Rd:t:l:u:c:pr:")) != -1) {
         switch(opt) {
         case 'h': 
                 arg_h();  //messaggio di help
                 break;
         case 'f': 
-                arg_f(optarg, q);  //manda il comando nella coda
+                arg_f(optarg); //definisco come si chiama il socket del server per connettersi
                 break;
         case 'w': 
-                arg_w(optarg, q);  //tokenizzare la stringa per suddividere le richieste dei vari file -w cartella,[n=0]
+                arg_w(optarg, &q);  //tokenizzare la stringa per suddividere le richieste dei vari file -w cartella,[n=0]
                 break;
         case 'W': 
-                arg_W(optarg, q);  //tokenizzo la stringa per suddividere la richiesta -W file1,[file2] per ogni file 
+                arg_W(optarg, &q);  //tokenizzo la stringa per suddividere la richiesta -W file1,[file2] per ogni file 
                 break;
         case 'r':
-                arg_r(optarg, q);
+                arg_r(optarg, &q);
                 break;
         case 'R':
-                arg_R(argv,argc, q);
+                arg_R(argv,argc, &q);
                 break;
         case 'd':
                 arg_d(optarg);
                 break;
         case 't':
-                arg_t(optarg, q);
+                arg_t(optarg, &q);
                 break;
         case 'c':
-                arg_c(optarg, q);
+                arg_c(optarg, &q);
                 break;
         case 'p':
                 arg_p();

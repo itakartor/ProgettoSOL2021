@@ -601,18 +601,18 @@ int main(int argc, char* argv[])
         }
         if (err<0) { fprintf(stderr, "[Errore]:lettura socket vuoto\n"); }
         
-        
+        //se effettivamente ho letto qualcosa nel socket identifico il comando da mettere in coda
         str.len = str.len - sizeof(char);
         //leviamo il primo carattere del comando
-        SYSCALL_EXIT("readn", notused, writen(connfd, &str.comando, sizeof(char)), "read", "");
-        fprintf(stderr, "stampo il comando %c str.comando\n",str.comando);//leggiamo il flag del comando per esempio 'W'
+        SYSCALL_EXIT("readn", notused, readn(connfd, &str.comando, sizeof(char)), "read", "");
+        fprintf(stderr, "stampo il comando %c \n",str.comando);//leggiamo il flag del comando per esempio 'W'
         str.arg = calloc((str.len), sizeof(char));
         if (!str.arg) 
         {
     	    perror("calloc");
     	    fprintf(stderr, "Memoria esaurita....\n");
         }
-        SYSCALL_EXIT("readn", notused, writen(connfd, str.arg, (str.len)*sizeof(char)), "read", "");//leggiamo l'argomento del comando da mettere in coda
+        SYSCALL_EXIT("readn", notused, readn(connfd, str.arg, (str.len)*sizeof(char)), "read", "");//leggiamo l'argomento del comando da mettere in coda
         
         ComandoClient *cmdtmp;
         ec_null((cmdtmp = malloc(sizeof(ComandoClient))), "malloc");

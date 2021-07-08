@@ -671,20 +671,22 @@ int visitaRicorsiva(char* name, int *n, Queue **q)//name è il nome del path e n
 
 int main(int argc, char *argv[]) 
 {
-  Queue *q = parser(argv,argc); //coda delle operazioni
+  
+  Queue *QueueParser = parser(argv,argc); //coda delle operazioni
+  //fprintf(stderr,"post parser\n");
   struct timespec abstime;
 
   add_to_current_time(2, 0, &abstime);
   //primo parametro: tempo limite (in secondi)
   //secondo parametro: intervallo di tempo tra due connessioni (in millisecondi)
-
+  fprintf(stderr,"socknameconfig %s\n",socknameconfig);
   ec_meno1((openConnection(socknameconfig, 1000, abstime)), "openConnection"); //da vedere se da errore
   abstime.tv_sec = timems / 1000;
   abstime.tv_nsec = (timems % 1000) * 1000000;
 
-  while(q->len > 0) 
+  while(QueueParser->len > 0) 
   { //finchè ci sono richieste che il parser ha visto
-    NodoComando *tmp = pop(&q);
+    NodoComando *tmp = pop(&QueueParser);
     nanosleep(&abstime, NULL);
      if(verbose)
       fprintf(stdout, "[Lettura Comando]: '%c' - %s in corso\n", tmp->cmd, tmp->name);
@@ -700,11 +702,11 @@ int main(int argc, char *argv[])
         ec_null((tmp->name = malloc(sizeof(char) * MAXPATH)), "malloc");
         ec_null((getcwd(tmp->name, MAXPATH)), "getcwd");
       }
-      if(visitaRicorsiva(tmp->name, &(tmp->n), &q) == -1) 
+      if(visitaRicorsiva(tmp->name, &(tmp->n), &QueueParser) == -1) 
         return -1;//però metto n=-1 per evitare il caso in cui n si decrementa fino a 0
     } 
     else
-      if(EseguiComandoClientServer(tmp) == -1)
+      if(EseguiComandoClient(tmp) == -1)
         return -1;
   }
   if(closeConnection(socknameconfig) == -1) 
