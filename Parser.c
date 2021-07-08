@@ -52,7 +52,7 @@ int arg_f(char* optarg)
         seenf = 1;
         ec_null((socknameconfig = malloc(sizeof(char) * strlen(optarg))), "malloc");
         strcpy(socknameconfig, optarg);
-        //printf("filename %s\n", optarg);
+        //fprintf(stderr,"sockname %s\n", optarg);
         return 0;
 }
 

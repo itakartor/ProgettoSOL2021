@@ -65,7 +65,7 @@ int openConnection(const char* sockname, int msec, const struct timespec abstime
     memset(&serv_addr, '0', sizeof(serv_addr));
 
     serv_addr.sun_family = AF_UNIX;
-    strncpy(serv_addr.sun_path,SOCKNAME, strlen(SOCKNAME)+1);
+    strncpy(serv_addr.sun_path,sockname, strlen(sockname)+1);
 
     // setting waiting time
     struct timespec wait_time;
@@ -79,11 +79,11 @@ int openConnection(const char* sockname, int msec, const struct timespec abstime
     // trying to connect
     int err = -1;
     if(verbose)
-      fprintf(stdout, "currtime %ld abstime %ld\n", curr_time.tv_sec, abstime.tv_sec);
+      fprintf(stdout, "[Time]: Currtime %ld abstime %ld\n", curr_time.tv_sec, abstime.tv_sec);
     while( (err = connect(sockfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr))) == -1
             && curr_time.tv_sec < abstime.tv_sec )
             {
-        fprintf(stderr, "[Errore Connessione]: %d\n", errno);
+        fprintf(stderr, "[Errore]: %d Provo a connettermi\n", errno);
 
         if( nanosleep(&wait_time, NULL) == -1)
         {
@@ -119,7 +119,7 @@ int closeConnection(const char* sockname)
     return -1;
   }
     // wrong socket name
-  if(strcmp(sockname, SOCKNAME) != 0)
+  if(strcmp(sockname, socknameconfig) != 0)
   {
         // this socket is not connected
     errno = ENOTCONN;
@@ -134,7 +134,7 @@ int closeConnection(const char* sockname)
     return -1;
   }
   if(verbose)
-    fprintf(stdout, "[Connessione]: Interrotta\n");
+    fprintf(stdout, "[Connessione]: Interrotta con Successo\n");
 
   sockfd = -1;
   return 0;
@@ -165,6 +165,8 @@ int writeCMD(const char* pathname, char cmd)
   SYSCALL_EXIT("writen", notused, writen(sockfd, Comando, lenPath * sizeof(char)), "write", "");
   if(verbose)
     fprintf(stdout, "[Invio Comando]: Successo\n"); //debug
+  free(Comando);
+  return 0;
 }
 
 int closeFile(const char* pathname) 
@@ -189,12 +191,12 @@ int closeFile(const char* pathname)
   if(risposta == -1) 
   {
     errno = EPERM;
-    fprintf(stderr, "closeFile del file %s fallita\n", pathname);
+    fprintf(stderr, "[Errore]: Chiusura file %s fallita\n", pathname);
   } 
   else//risposta = 0
   {
     if(verbose)
-      fprintf(stdout, "ho chiuso il file %s\n", pathname);
+      fprintf(stdout, "[Chiusura]: File %s chiuso\n", pathname);
   }
   return risposta;
 }
@@ -221,19 +223,19 @@ int openFile(const char* pathname, int flags)//apertura di un file ram
   if(risposta == 0)
   {
     if(verbose)
-      fprintf(stdout, "il file %s è stato creato con successo\n", pathname);
+      fprintf(stdout, "[Apertura]: Il file %s è stato creato con successo\n", pathname);
   }
   else
   {
     if(risposta == -2)
     {
-      fprintf(stderr, "File %s già esistente nel server (openFile fallita)\n", pathname);
+      fprintf(stderr, "[Avviso]: File %s già esistente nel server (Creazione file fallita)\n", pathname);
       risposta = -1;
     }
     else
     {
         errno = EACCES;
-        fprintf(stderr, "il file %s non è stato creato\n", pathname);
+        fprintf(stderr, "[Errore]: Il file %s non è stato creato\n", pathname);
     }
   }
   return risposta;
@@ -261,13 +263,13 @@ int removeFile(const char* pathname)
   if(risposta == -1) 
   { 
     errno = EACCES;
-    fprintf(stderr, "[Rimozione file]: %s Fallita\n", pathname);
+    fprintf(stderr, "[Errore]: Rimozione %s Fallita\n", pathname);
     return -1; 
   }
   else
   {
     if(verbose)
-      fprintf(stdout, "[Rimozione file]: %s Successo\n", pathname);//debug   
+      fprintf(stdout, "[Rimozione]: %s Successo\n", pathname);//debug   
   }
   
   return 0;//se va tutto bene ritorna 0
@@ -297,7 +299,7 @@ int readFile(const char* pathname, void** buf, int* size)//leggo il file al path
   if(*size == -1) //se non riesco a trovare il file il server scriverà al client -1 per indicare l'errore
   {
     errno = EPERM;
-    fprintf(stderr, "[Lettura file]: %s Fallita\n", pathname);//debug
+    fprintf(stderr, "[Errore]: Lettura %s Fallita\n", pathname);//debug
     *buf = NULL;//metto il buff a NULL per evitare che provi a scrivere qualcosa nel buf
     *size = 0;
     return -1; //errore o file inesistente
@@ -394,7 +396,7 @@ int readNFiles(int n, const char* dirname) //int n è il numero dei file da legg
     else
     {
       errno = EACCES;
-      fprintf(stderr, "[OpenFile]: %s Fallita\n", arr_buf[i]);
+      fprintf(stderr, "[Errore]: Apertura %s Fallita\n", arr_buf[i]);
       return -1;
     }
   }
@@ -417,7 +419,7 @@ int appendToFile(const char* pathname, void* buf, int size)
   SYSCALL_EXIT("readn", notused, readn(sockfd, &cista, sizeof(int)), "read", "");
   if(!cista) 
   { //il file non sta nel server materialmente, neanche se si espellessero tutti i file
-    fprintf(stderr, "il file %s è troppo grande per la capienza del server\n", pathname);
+    fprintf(stderr, "[Problema]: Il file %s è troppo grande per la capienza del server\n", pathname);
       //vanno fatte delle FREE
     return -1;
   }
@@ -428,12 +430,12 @@ int appendToFile(const char* pathname, void* buf, int size)
   if(risposta == -1) 
   {
     errno = EACCES;
-    fprintf(stderr, "Errore nella scrittura in append del file %s\n", pathname);
+    fprintf(stderr, "[Errore]: Scrittura append del file %s\n", pathname);
   } 
   else
   {
     if(verbose)
-      fprintf(stdout, "File %s scritto correttamente nel server\n", pathname);
+      fprintf(stdout, "[Scrittura]: File %s scritto correttamente nel server\n", pathname);
   }
   return risposta;
 }
@@ -458,7 +460,7 @@ int writeFile(const char* pathname) //scrivo un file nel server
   
   if(risposta == -1) 
   {
-    fprintf(stderr, "[OpenFile]: %s Fallita\n", pathname);
+    fprintf(stderr, "[Errore]: Apertura file %s Fallita\n", pathname);
     return -1;
   } 
   else//se non ci sono problemi durante la creazione del file o l'apertura
@@ -587,7 +589,7 @@ int EseguiComandoClient(NodoComando *tmp)
         }
         else
         {
-          fprintf(stderr, "Errore: parametro %c non riconosciuto\n", tmp->cmd);
+          fprintf(stderr, "[Errore]: Parametro %c non riconosciuto\n", tmp->cmd);
           return -1;
         }
       }
@@ -671,7 +673,6 @@ int visitaRicorsiva(char* name, int *n, Queue **q)//name è il nome del path e n
 
 int main(int argc, char *argv[]) 
 {
-  
   Queue *QueueParser = parser(argv,argc); //coda delle operazioni
   //fprintf(stderr,"post parser\n");
   struct timespec abstime;
@@ -679,7 +680,8 @@ int main(int argc, char *argv[])
   add_to_current_time(2, 0, &abstime);
   //primo parametro: tempo limite (in secondi)
   //secondo parametro: intervallo di tempo tra due connessioni (in millisecondi)
-  fprintf(stderr,"socknameconfig %s\n",socknameconfig);
+  
+  //fprintf(stderr,"socknameconfig %s\n",socknameconfig);
   ec_meno1((openConnection(socknameconfig, 1000, abstime)), "openConnection"); //da vedere se da errore
   abstime.tv_sec = timems / 1000;
   abstime.tv_nsec = (timems % 1000) * 1000000;

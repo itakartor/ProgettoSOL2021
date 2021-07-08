@@ -595,6 +595,10 @@ int main(int argc, char* argv[])
         if(err == 0) //socket vuoto
         {
           fprintf(stderr, "client disconnesso\n");
+          
+          FD_CLR(connfd, &set);//libero il bit sulla maschera per fare spazio e chiudo il socket
+          ec_meno1((close(connfd)), "close");
+          
           if (connfd == fdmax)
             fdmax = updatemax(set, fdmax);
           continue;
@@ -606,12 +610,8 @@ int main(int argc, char* argv[])
         //leviamo il primo carattere del comando
         SYSCALL_EXIT("readn", notused, readn(connfd, &str.comando, sizeof(char)), "read", "");
         fprintf(stderr, "stampo il comando %c \n",str.comando);//leggiamo il flag del comando per esempio 'W'
-        str.arg = calloc((str.len), sizeof(char));
-        if (!str.arg) 
-        {
-    	    perror("calloc");
-    	    fprintf(stderr, "Memoria esaurita....\n");
-        }
+        ec_null((str.arg = calloc((str.len), sizeof(char))), "calloc");
+        
         SYSCALL_EXIT("readn", notused, readn(connfd, str.arg, (str.len)*sizeof(char)), "read", "");//leggiamo l'argomento del comando da mettere in coda
         
         ComandoClient *cmdtmp;
