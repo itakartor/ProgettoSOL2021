@@ -26,6 +26,7 @@
 #define SOCKNAME "mysock"
 #define MAXLENNUM 10
 #define O_CREATE 1
+#define O_OPENED 0
 long sockfd;
 
 static int add_to_current_time(long sec, long nsec, struct timespec* res)
@@ -79,7 +80,7 @@ int openConnection(const char* sockname, int msec, const struct timespec abstime
     // trying to connect
     int err = -1;
     if(verbose)
-      fprintf(stdout, "[Time]: Currtime %ld abstime %ld\n", curr_time.tv_sec, abstime.tv_sec);
+      fprintf(stdout, "[Tempo connessione]: Currtime %ld abstime %ld\n", curr_time.tv_sec, abstime.tv_sec);
     while( (err = connect(sockfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr))) == -1
             && curr_time.tv_sec < abstime.tv_sec )
             {
@@ -203,9 +204,9 @@ int closeFile(const char* pathname)
 
 int openFile(const char* pathname, int flags)//apertura di un file ram
 {
-  if((flags != 0 && flags != 1) || pathname == NULL) 
-  { // i flag passate non sono valide (0 -> open | 1 -> open & create)
-    errno = EINVAL;
+  if((flags != O_OPENED && flags != O_CREATE) || pathname == NULL) //se i flag passati non sono validi
+  {                                                              //O_OPENED solo apertura
+    errno = EINVAL;                                              //O_CREATE creazione e apertura
     perror("[OpenFile]");
     return -1;
   }
@@ -399,7 +400,9 @@ int readNFiles(int n, const char* dirname) //int n è il numero dei file da legg
       fprintf(stderr, "[Errore]: Apertura %s Fallita\n", arr_buf[i]);
       return -1;
     }
+    free(arr_buf[i]);
   }
+  free(arr_buf);
   return 0;
 }
 
@@ -420,7 +423,6 @@ int appendToFile(const char* pathname, void* buf, int size)
   if(!cista) 
   { //il file non sta nel server materialmente, neanche se si espellessero tutti i file
     fprintf(stderr, "[Problema]: Il file %s è troppo grande per la capienza del server\n", pathname);
-      //vanno fatte delle FREE
     return -1;
   }
   SYSCALL_EXIT("writen", notused, writen(sockfd, (char*)buf, size * sizeof(char)), "write", "");
@@ -455,8 +457,8 @@ int writeFile(const char* pathname) //scrivo un file nel server
     perror("[writeCMD]");
     return -1;
   }
-  int notused, lenBuf, risposta;//n è la lunghezza del buffer nel quale salvo le risposte del server 
-  SYSCALL_EXIT("readn", notused, readn(sockfd, &risposta, sizeof(int)), "read", "");
+  int notused, lenBuf, risposta;//lenBuf è la lunghezza del buffer nel quale salvo le risposte del server 
+  SYSCALL_EXIT("readn", notused, readn(sockfd, &risposta, sizeof(int)), "read", "");//leggo la risposta del server per vedere se il file è stato aperto
   
   if(risposta == -1) 
   {
@@ -488,7 +490,11 @@ int writeFile(const char* pathname) //scrivo un file nel server
     }
 
     if(appendToFile(pathname, bufferFile, length) == -1)
+    {
+      free(bufferFile);
       return -1;
+    }
+  free(bufferFile);    
   }
   return 0;//successo
 }
@@ -505,7 +511,7 @@ int EseguiComandoClient(NodoComando *tmp)
   {
     if(verbose)
       fprintf(stdout, "[Rimozione File]: %s in corso\n", tmp->name);
-    if(openFile(tmp->name, 0) != -1)
+    if(openFile(tmp->name, O_OPENED) != -1)//apro il file se gia presente 
     {
       if(removeFile(tmp->name) == -1) 
         return -1;
@@ -521,7 +527,7 @@ int EseguiComandoClient(NodoComando *tmp)
     {
       if(verbose)
         fprintf(stdout, "[Lettura file]: %s in corso\n",tmp->name);//debug
-      if(openFile(tmp->name, 0) != -1)
+      if(openFile(tmp->name, O_OPENED) != -1)
       {
         void* buf;
         int sizebuff; //risolvere problema size_t
@@ -534,10 +540,14 @@ int EseguiComandoClient(NodoComando *tmp)
           if(savefiledir != NULL && buf != NULL) //se le condizioni sono corrette leggo il file
           {
             char path[MAXPATH];
-            snprintf(path, sizeof(path), "%s/%s", savefiledir, tmp->name);
+            if(snprintf(path, sizeof(path), "%s/%s", savefiledir, tmp->name) < 0) 
+            { 
+              perror("snprintf"); 
+              return -1; 
+            }
             //fprintf(stderr, "sto andando a scrivere il file %s in %s\n", tmp->name, path);
-            writeBufToDisk(path, buf, sizebuff);
-            closeFile(tmp->name);
+            if(writeBufToDisk(path, buf, sizebuff) == -1) return -1;
+            if(closeFile(tmp->name) == -1) return -1; 
           }
           else // non ho una cartella per salvare il file oppure il buffer è vuoto
           {
@@ -574,7 +584,7 @@ int EseguiComandoClient(NodoComando *tmp)
           } 
           else
           {
-            if(openFile(tmp->name, 0) != -1) //flag = 0 è come se non avessi flag quindi devo provare ad aprire il file
+            if(openFile(tmp->name, O_OPENED) != -1) //flag = 0 è come se non avessi flag quindi devo provare ad aprire il file
             { 
               if(writeFile(tmp->name) == -1) 
                 return -1; 
@@ -600,8 +610,7 @@ int EseguiComandoClient(NodoComando *tmp)
 
 
 int visitaRicorsiva(char* name, int *n, Queue **q)//name è il nome del path e n è il numero dei file 
-{ //alcuni file hanno problemi 
-  //fprintf(stderr, "sto visitando %s\n", name);
+{
   if(name == NULL)//se il path name non è corretto
     return -1;
   char buftmp[MAXPATH];
@@ -660,6 +669,7 @@ int visitaRicorsiva(char* name, int *n, Queue **q)//name è il nome del path e n
           new->n = 0;
           if(push(q, new) == -1) 
             return -1;
+          free(buffer);
         }
         if(*n > 0)//se solo se n>0 lo decremento
           (*n)--;
@@ -700,19 +710,25 @@ int main(int argc, char *argv[])
       
       if(strcmp(tmp->name, ".") == 0)//se passo come dir "." metto il path reale
       {
-        free(tmp->name);
         ec_null((tmp->name = malloc(sizeof(char) * MAXPATH)), "malloc");
         ec_null((getcwd(tmp->name, MAXPATH)), "getcwd");
       }
       if(visitaRicorsiva(tmp->name, &(tmp->n), &QueueParser) == -1) 
         return -1;//però metto n=-1 per evitare il caso in cui n si decrementa fino a 0
+      free(tmp->name);
     } 
     else
+    {
       if(EseguiComandoClient(tmp) == -1)
-        return -1;
+        fprintf(stderr,"[Errore]: comando %c con parametro %s Fallito \n",tmp->cmd,tmp->name);
+        
+        free(tmp->name);
+        free(tmp);
+    }
+      
   }
-  if(closeConnection(socknameconfig) == -1) 
-    return -1;
+  ec_meno1((closeConnection(socknameconfig)), "closeConnection");
+  free(QueueParser);
   
   return 0;
 }
