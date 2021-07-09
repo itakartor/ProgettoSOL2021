@@ -165,7 +165,7 @@ int writeCMD(const char* pathname, char cmd)
   SYSCALL_EXIT("writen", notused, writen(sockfd, &lenPath, sizeof(int)), "write", ""); //scrivo il comando "semplice" al server
   SYSCALL_EXIT("writen", notused, writen(sockfd, Comando, lenPath * sizeof(char)), "write", "");
   if(verbose)
-    fprintf(stdout, "[Invio Comando]: Successo\n"); //debug
+    fprintf(stdout, "[Invio Comando]: %s Successo \n", Comando); //debug
   free(Comando);
   return 0;
 }

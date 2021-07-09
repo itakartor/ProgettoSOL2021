@@ -41,16 +41,21 @@ int isNumber(const char* s, int* n) {
   return 1;   // non e' un numero
 }
 
-int isPipe(int numWorkers, int connfd, int ** p)
+int isPipe(int numWorkers, long connfd, int ** p)
 {
+  int risultato = 0;
         for(int j = 0; j < numWorkers; j++) 
         {
           //fprintf(stderr, "sono nel for, connfd %ld p[j][0] %d\n", connfd, p[j][0]);
-          if(connfd == p[j][0])
-            return 1;
-          else
-            return 0;  
+          if(!risultato)
+          {
+            if(connfd == p[j][0])
+              risultato = 1;
+            else
+              risultato = 0; 
+          }
         }
+        return risultato;
 }
 
 void Pthread_mutex_lock(pthread_mutex_t *mtx) {

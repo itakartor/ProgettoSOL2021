@@ -13,7 +13,7 @@ int updatemax(fd_set set, int fdmax);
 
 int isNumber(const char* s, int* n);
 
-int isPipe(int numWorkers, int connfd, int ** p);
+int isPipe(int numWorkers, long connfd, int ** p);
 
 //static inline int writen(long fd, void *buf, size_t size);
 

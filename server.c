@@ -50,12 +50,14 @@ void cleanup() { //cancellare il collegamento
   unlink(SockName);
 }
 
-void parserFile(void) {   //parser del file
+void parserFile(void) //parser del file config.txt
+{   
   int i;
   char* save;
   char* token;
 
-  char* buffer = malloc(sizeof(char) * MAXBUFFER);
+  char* buffer;
+  ec_null((buffer = malloc(sizeof(char) * MAXBUFFER)), "malloc");
   FILE* p;
 
   ec_null((p = fopen(CONFIGFILE, "r")), "fopen");
@@ -68,7 +70,8 @@ void parserFile(void) {   //parser del file
     ec_null((tmp = malloc(sizeof(char*) * 2)), "malloc");
     i = 0;        //indice dell'array tmp per salvare l'argomento della variabile di interesse
     
-    while(token) {
+    while(token) 
+    {
       ec_null((tmp[i] = malloc(sizeof(char) * MAXSTRING)), "malloc");
       strncpy(tmp[i], token, strlen(token) - i); //l'argomento non deve prendere il terminatore di riga (accapo)
       token = strtok_r(NULL, " ", &save);
@@ -158,7 +161,8 @@ static void* threadF(void* arg) //funzione dei thread worker
       }
     }
     fprintf(stderr, "sono sveglio! (numero thread:%d)\n",numThread);
-    ComandoClient* tmp = pop(&queueClient);
+    
+    ComandoClient* tmp = pop(&queueClient);//predo il comando da eseguire
     Pthread_mutex_unlock(&mutexQueueClient);
 
     if(tmp == NULL)
@@ -181,8 +185,8 @@ static void* threadF(void* arg) //funzione dei thread worker
     //POSSIBILI COMANDI PASSATI
     switch(comando) 
     {
-      case 'W': 
-      { //richiesta di scrittura
+      case 'W'://devo scrivere un file nel server 
+      { 
         fprintf(stdout, "[Comando Scrittura]: %s Ricevuto\n", parametro);
         Pthread_mutex_lock(&mutexQueueFiles);
         //fprintf(stderr, "ho preso la lock\n");
@@ -191,16 +195,15 @@ static void* threadF(void* arg) //funzione dei thread worker
         Pthread_mutex_unlock(&mutexQueueFiles);
 
         int risposta = 0;
-        if(esiste == NULL) 
-        { //errore: il file non esiste
+        if(esiste == NULL)//errore: ci sono stati errori nella ricerca/creazione file 
+        { 
           risposta = -1;
           SYSCALL_EXIT("writen", notused, writen(connfd, &risposta, sizeof(int)), "write", "");//errore il file non esiste
         } 
-        else//file esiste
+        else//file è stato trovato/creato con successo
         { 
           fileRam *newFile = esiste->data;
           Pthread_mutex_lock(&newFile->lock);//alloco il file per evitare che qualcuno lo modifichi
-          //fprintf(stderr, "ho preso la lock\n");
           if(newFile->is_opened != connfd) 
           { //file è aperto momentaneamente da un altro client 
             risposta = -1;
@@ -215,9 +218,8 @@ static void* threadF(void* arg) //funzione dei thread worker
               
             int cista = 1;//il file ci sta 
             if(lentmp > spazio || lentmp + newFile->length > spazio) //in caso che stia creando un file troppo grande o stia scrivendo troppe cose sul file per la capienza del server 
-            { //non lo memorizza proprio
+            {
               fprintf(stderr, "[Errore]:file %s troppo grande (%ld) (capienza massima %d)\n", newFile->nome, newFile->length, spazio);
-                //vanno fatte delle FREE
                 //vado a scrivere nel socket che il file non ci sta
               if(lentmp > spazio)
                 removeFromQueue(&queueFiles, esiste);//rimuovo il file dalla coda perchè ho gia inserito il file
@@ -489,12 +491,11 @@ static void* threadF(void* arg) //funzione dei thread worker
         break;
       }
     }
-
     FD_SET(connfd, &set);
     //fprintf(stderr, "num thread %d, connfd %ld\n", *numThread, connfd);
-    write(p[numThread][1], "vai", 3);
-
+    SYSCALL_EXIT("writen", notused, writen(p[numThread][1], "vai", 3), "write", "");
   }
+    
   return NULL;
 }
 
@@ -502,15 +503,17 @@ int main(int argc, char* argv[])
 {
   
   parserFile();      //prendo le informazioni dal file config.txt
-  numWorkers = 1;
+  numWorkers = 2;
   cleanup();    //ripulisco vecchie connessioni 
   atexit(cleanup);
   queueClient = initQueue(); //coda dei file descriptor dei client che provano a connettersi
   queueFiles = initQueue();
 
-  p = malloc(sizeof(int*) * numWorkers); //array delle pipe
-  int *arrtmp = malloc(sizeof(int) * numWorkers);//array del numero identificativo del thread 
-  pthread_t *t = malloc(sizeof(pthread_t) * numWorkers); //array dei thread
+  ec_null((p = (int**)malloc(sizeof(int*) * numWorkers)), "malloc"); //array delle pipe
+  int *arrtmp;//array del numero identificativo del thread 
+  ec_null((arrtmp = malloc(sizeof(int) * numWorkers)), "malloc");
+  pthread_t *t;
+  ec_null((t = malloc(sizeof(pthread_t) * numWorkers)), "malloc");//array dei thread
   for(int i = 0; i < numWorkers; i++) 
   {
     arrtmp[i] = i;
@@ -520,8 +523,8 @@ int main(int argc, char* argv[])
         exit(EXIT_FAILURE);
     }
 
-    p[i] = (int*)malloc(sizeof(int) * 2);
-    ec_meno1((pipe(p[i]) == -1),"pipe");
+    ec_null((p[i] = (int*)malloc(sizeof(int) * 2)), "malloc");
+    ec_meno1((pipe(p[i])),"pipe");
   }
 
   int listenfd; //codice identificato del listen per accettare le nuove connessioni
@@ -564,11 +567,7 @@ int main(int argc, char* argv[])
   {
 // copio il set nella variabile temporanea per la select
     tmpset = set;
-    if (select(fdmax+1, &tmpset, NULL, NULL, NULL) == -1) 
-    {
-      perror("select");
-      return -1;
-    }
+    ec_meno1((select(fdmax+1, &tmpset, NULL, NULL, NULL)), "select");
 
 // cerchiamo di capire da quale fd abbiamo ricevuto una richiesta
     for(int i=0; i <= fdmax; i++) 
@@ -595,7 +594,7 @@ int main(int argc, char* argv[])
         {
           //fprintf(stderr, "è una pipe\n");
           char buftmp[4];
-          read(connfd, buftmp, 3);
+          SYSCALL_EXIT("readn", notused, readn(connfd, buftmp, 3), "read", "");
           //fprintf(stderr,"leggo buf %s dal pipe\n",buftmp);
           continue;
         }
@@ -638,7 +637,7 @@ int main(int argc, char* argv[])
         Pthread_mutex_lock(&mutexQueueClient);
         ec_meno1((push(&queueClient, cmdtmp)), "push");
         Pthread_mutex_unlock(&mutexQueueClient);
-        pthread_cond_signal(&condQueueClient); 
+        if(pthread_cond_signal(&condQueueClient) != 0) { perror("pthread_cond_signal"); exit(EXIT_FAILURE); }
       }
     }
   }
