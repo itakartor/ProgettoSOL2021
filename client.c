@@ -16,6 +16,11 @@
 #include <ctype.h>
 #include <pthread.h>
 
+//open,write,read
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+
 #include "queue.h"
 #include "util.h"
 #include "Parser.h"
@@ -65,9 +70,10 @@ int openConnection(const char* sockname, int msec, const struct timespec abstime
     SYSCALL_EXIT("socket", sockfd, socket(AF_UNIX, SOCK_STREAM, 0), "socket", "");
     memset(&serv_addr, '0', sizeof(serv_addr));
 
+    int LenSockName = strlen(sockname);
     serv_addr.sun_family = AF_UNIX;
-    strncpy(serv_addr.sun_path,sockname, strlen(sockname)+1);
-
+    strncpy(serv_addr.sun_path,sockname, LenSockName+1);
+    serv_addr.sun_path[LenSockName] = '\0';
     // setting waiting time
     struct timespec wait_time;
     // no need to check because msec > 0 and &wait_time != NULL
@@ -315,19 +321,20 @@ int readFile(const char* pathname, void** buf, int* size)//leggo il file al path
   }
 }
 
-int writeBufToDisk(const char* pathname, void* buf, int size) 
+int writeLocal(const char* pathname, void* buf, int size) 
 {
   if(pathname == NULL || buf == NULL || size < 0) 
   {//argomenti non validi 
     errno = EINVAL;
-    perror("[writeBufToDisk]");
+    perror("[writeLocal]");
     return -1;
   }
 
-  FILE *f; //bisogna gestire gli errori 
-  ec_null((f = fopen(pathname, "w")), "fopen");
-  fwrite(buf, 1, size, f);//va cambiata con la write perchè non posso controllare l'errore
-  neq_zero((fclose(f)), "fclose");
+  int idFile;
+  ec_meno1((idFile = open(pathname, O_WRONLY | O_APPEND | O_CREAT, 0644)), "open");
+  ec_meno1((writen(idFile, buf, size)), "writen");
+  ec_meno1((close(idFile)), "close");
+  
   return 0;//successo
 }
 
@@ -341,8 +348,8 @@ int readNFiles(int n, const char* dirname) //int n è il numero dei file da legg
   }
   char* ntmp; //passo il numero come un carattere per riutilizzare il codice
   ec_null((ntmp = malloc(sizeof(char) * MAXLENNUM)), "malloc");
-  if(sprintf(ntmp, "%d", n) < 0) 
-  {//memorizzo il numero in ntmp come char
+  if(sprintf(ntmp, "%d", n) < 0)//memorizzo il numero in ntmp come char 
+  {
     perror("[Snprintf]");
     return -1;
   }
@@ -352,19 +359,18 @@ int readNFiles(int n, const char* dirname) //int n è il numero dei file da legg
     perror("[writeCMD]");
     return -1;
   }
+  free(ntmp);
 
   int notused;
   SYSCALL_EXIT("readn", notused, readn(sockfd, &n, sizeof(int)), "read", "");//leggo dal socket del server il numero di file da leggere
   int lenpathtmp;                                                            //visto che potrebbero essere meno di quelli dichiarati dal parametro n
-  char* buftmp;
   char** arr_buf; //tengo traccia dei path dei file per poi leggerli in un secondo momento
   ec_null((arr_buf = malloc(sizeof(char*) * n)), "malloc");
   for(int i = 0; i < n; i++) 
   { //per ogni file da leggere dal server
     SYSCALL_EXIT("readn", notused, readn(sockfd, &lenpathtmp, sizeof(int)), "read", "");
-    ec_null((buftmp = malloc(sizeof(char) * lenpathtmp)), "malloc");//passaggio in più inutile
-    SYSCALL_EXIT("readn", notused, readn(sockfd, buftmp, lenpathtmp * sizeof(char)), "read", "");
-    arr_buf[i] = buftmp;//passaggio in più inutile posso direttamente allocare l'array e fargli salvare il contenuto in esso
+    ec_null((arr_buf[i] = malloc(sizeof(char) * lenpathtmp)), "malloc");//passaggio in più inutile
+    SYSCALL_EXIT("readn", notused, readn(sockfd, arr_buf[i], lenpathtmp * sizeof(char)), "read", "");
   } 
   
   //prima mi ricavo tutti i nomi dei file da leggere e poi li leggo per evitare conflitti
@@ -372,13 +378,12 @@ int readNFiles(int n, const char* dirname) //int n è il numero dei file da legg
   
   for(int i = 0; i < n; i++) 
   {
-    //fprintf(stderr, "elemento %d: %s\n", i, arr_buf[i]);//debug
     void* buffile;
     int sizebufffile;
     if(openFile(arr_buf[i], 0) != -1)//gestione dell'errore
     {
-      if(readFile(arr_buf[i], &buffile, &sizebufffile) == -1) 
-      {//leggo un singolo file preso dall'array dei file
+      if(readFile(arr_buf[i], &buffile, &sizebufffile) == -1) //leggo un singolo file preso dall'array dei file
+      {
         return -1;
       }
       char path[MAXPATH];//dichiaro un path 
@@ -389,7 +394,7 @@ int readNFiles(int n, const char* dirname) //int n è il numero dei file da legg
         return -1; 
         }
    
-      if(writeBufToDisk(path, buffile, sizebufffile) == -1) { return -1; }//infine scrivo in append il contenuto del file
+      if(writeLocal(path, buffile, sizebufffile) == -1) { return -1; }//infine scrivo in append il contenuto del file
       if(closeFile(arr_buf[i]) == -1) { return -1; }//infine chiudo il file
     }
     else
@@ -418,8 +423,8 @@ int appendToFile(const char* pathname, void* buf, int size)
   
   int cista;
   SYSCALL_EXIT("readn", notused, readn(sockfd, &cista, sizeof(int)), "read", "");
-  if(!cista) 
-  { //il file non sta nel server materialmente, neanche se si espellessero tutti i file
+  if(!cista)//il file non sta nel server materialmente, neanche se si espellessero tutti i file
+  { 
     fprintf(stderr, "[Problema]: Il file %s è troppo grande per la capienza del server\n", pathname);
     return -1;
   }
@@ -469,23 +474,16 @@ int writeFile(const char* pathname) //scrivo un file nel server
     lenBuf = strlen(pathname) + 2; //+2 per il comando e il terminatore
     ec_null((buffer = realloc(buffer, lenBuf * sizeof(char))), "realloc");
 
-    FILE * f; //va cambiata la fopen e le funzioni con la f
-    ec_null((f = fopen(pathname, "rb")), "fopen");
-    //questa parte recupera la lunghezza e il contenuto di un file potrei pure metterlo in una funzione
-    long length;
+    //copiatura del file da file a info volatile
+    struct stat info;
+    ec_meno1((stat(pathname, &info)), "stat");
+    long length = (long)info.st_size;//size del file
+    int idFile;
+    ec_meno1((idFile = open(pathname, O_RDONLY)), "open");
     char* bufferFile;
-    if (f) //copia il file in un buffer
-    {
-      fseek (f, 0, SEEK_END);
-      length = ftell (f);
-      fseek (f, 0, SEEK_SET);
-      bufferFile = malloc (length);
-      if (bufferFile)
-      {
-        fread (bufferFile, 1, length, f);
-      }
-       neq_zero((fclose(f)), "fclose");
-    }
+    ec_null((bufferFile = malloc(sizeof(char) * length)), "malloc");
+    ec_meno1((readn(idFile, bufferFile, length)), "readn");
+    ec_meno1((close(idFile)), "close");
 
     if(appendToFile(pathname, bufferFile, length) == -1)
     {
@@ -543,8 +541,7 @@ int EseguiComandoClient(NodoComando *tmp)
               perror("snprintf"); 
               return -1; 
             }
-            //fprintf(stderr, "sto andando a scrivere il file %s in %s\n", tmp->name, path);
-            if(writeBufToDisk(path, buf, sizebuff) == -1) return -1;
+            if(writeLocal(path, buf, sizebuff) == -1) return -1;
             if(closeFile(tmp->name) == -1) return -1; 
           }
           else // non ho una cartella per salvare il file oppure il buffer è vuoto
@@ -613,7 +610,7 @@ int visitaRicorsiva(char* name, int *n, Queue **q)//name è il nome del path e n
   if(name == NULL)//se il path name non è corretto
     return -1;
   char buftmp[MAXPATH];
-  if (getcwd(buftmp, MAXPATH)==NULL)//prendendo il pathname della directory attuale
+  if (getcwd(buftmp, MAXPATH) == NULL)//prendendo il pathname della directory attuale
   { 
     perror("getcwd"); 
     return -1; 
@@ -634,14 +631,13 @@ int visitaRicorsiva(char* name, int *n, Queue **q)//name è il nome del path e n
   while ((entry = readdir(dir)) != NULL && (*n != 0))//apro la dir e vedo n != 0 perchè in caso dovrei fermarmi
   {
     char path[MAXPATH];
-    //fprintf(stderr,"entry visitata %s\n",entry->d_name);
     if (entry->d_type == DT_DIR)//vedo se il tipo della entry è una cartella
     {
       if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0 || entry->d_name[0] == '.')
         continue;
         
-        if(snprintf(path, sizeof(path), "%s/%s", name, entry->d_name) < 0) 
-        {//va a scrivere nel path l'entry->d_name che sto visitando
+        if(snprintf(path, sizeof(path), "%s/%s", name, entry->d_name) < 0) //va a scrivere nel path l'entry->d_name che sto visitando
+        {
           perror("snprintf"); 
           return -1; 
         } 

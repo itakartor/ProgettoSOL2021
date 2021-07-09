@@ -837,9 +837,12 @@ int main(int argc, char* argv[])
   do
   {
     tmpcodafile = pop(&queueFiles);
-    free(tmpcodafile->nome);
-    free(tmpcodafile->buffer);
-    free(tmpcodafile);
+    if(tmpcodafile != NULL)
+    {
+      free(tmpcodafile->nome);
+      free(tmpcodafile->buffer);
+      free(tmpcodafile);
+    }
   }while(tmpcodafile != NULL);
   free(queueFiles);
 
@@ -848,8 +851,11 @@ int main(int argc, char* argv[])
   do
   {
     tmpcodacomandi = pop(&queueClient);
-    free(tmpcodacomandi->parametro);
-    free(tmpcodacomandi);
+    if(tmpcodafile != NULL)
+    {
+      free(tmpcodacomandi->parametro);
+      free(tmpcodacomandi);
+    }
   }while(tmpcodacomandi != NULL);
   free(queueClient);
 

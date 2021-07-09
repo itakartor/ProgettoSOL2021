@@ -49,7 +49,6 @@ int push(Queue **q, void* el) //inserimento in coda in una FIFO
     (*q)->tail = new;
     (*q)->len++; // = *q->len + 1;
   }
-  //fprintf(stderr,"esco dalla push");
   return 0;
 }
 
@@ -68,14 +67,16 @@ void insert(Queue **q, char cmd, char* name, int n) { //crea il NodoComando e lo
   }
   new->n = n;
   push(q, new);
-  //fprintf(stderr,"esco dalla push\n");
 }
 
-void* pop(Queue **q) { //restituisce la testa e la rimuove dalla queue
-  if((*q)->head == NULL) { //la lista è già vuota
-    fprintf(stderr, "lista vuota");
+void* pop(Queue **q)//restituisce la testa e la rimuove dalla queue 
+{ 
+  if((*q)->head == NULL) //la lista è già vuota
+  { 
     return NULL;
-  } else {
+  } 
+  else 
+  {
     void *ret = ((*q)->head)->data;
     Node* tmp = (*q)->head;
     (*q)->head = ((*q)->head)->next;
