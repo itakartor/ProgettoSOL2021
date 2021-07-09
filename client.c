@@ -186,9 +186,7 @@ int closeFile(const char* pathname)
     return -1;
   }
   int risposta, notused;
-
   SYSCALL_EXIT("readn", notused, readn(sockfd, &risposta, sizeof(int)), "read", "");//leggo la risposta del server che sta "chiudendo il file"
-  
   if(risposta == -1) 
   {
     errno = EPERM;
@@ -219,12 +217,12 @@ int openFile(const char* pathname, int flags)//apertura di un file ram
   int risposta, notused;
   
   SYSCALL_EXIT("writen", notused, writen(sockfd, &flags, sizeof(int)), "write", "");//scrivo i flag dell'apertura file
-
+  
   SYSCALL_EXIT("readn", notused, readn(sockfd, &risposta, sizeof(int)), "read", "");//leggo il risultato dell'apertura
   if(risposta == 0)
   {
     if(verbose)
-      fprintf(stdout, "[Apertura]: Il file %s è stato creato con successo\n", pathname);
+      fprintf(stdout, "[Apertura]: Il file %s è stato creato/aperto con successo\n", pathname);
   }
   else
   {
@@ -551,6 +549,7 @@ int EseguiComandoClient(NodoComando *tmp)
           }
           else // non ho una cartella per salvare il file oppure il buffer è vuoto
           {
+            fprintf(stderr,"[Problema]: non ho una cartella dove salvare il file \n");
             return -1; //errore
           }
         } 
@@ -684,7 +683,6 @@ int visitaRicorsiva(char* name, int *n, Queue **q)//name è il nome del path e n
 int main(int argc, char *argv[]) 
 {
   Queue *QueueParser = parser(argv,argc); //coda delle operazioni
-  //fprintf(stderr,"post parser\n");
   struct timespec abstime;
 
   add_to_current_time(2, 0, &abstime);

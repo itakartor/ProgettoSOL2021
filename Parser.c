@@ -218,10 +218,6 @@ int arg_c(char* optarg, Queue** q)
               token = strtok_r(NULL, ",", &save);
         }
 
-        if(token != NULL)
-                free(token);
-        if(save != NULL)
-                free(save);
         free(arg);
         return 0;
 }

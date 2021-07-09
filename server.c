@@ -185,7 +185,9 @@ static void* threadF(void* arg) //funzione dei thread worker
       { //richiesta di scrittura
         fprintf(stdout, "[Comando Scrittura]: %s Ricevuto\n", parametro);
         Pthread_mutex_lock(&mutexQueueFiles);
+        //fprintf(stderr, "ho preso la lock\n");
         Node* esiste = fileExistsServer(queueFiles, parametro);
+        //fprintf(stderr, "sto per lasciare la lock\n");
         Pthread_mutex_unlock(&mutexQueueFiles);
 
         int risposta = 0;
@@ -198,7 +200,7 @@ static void* threadF(void* arg) //funzione dei thread worker
         { 
           fileRam *newFile = esiste->data;
           Pthread_mutex_lock(&newFile->lock);//alloco il file per evitare che qualcuno lo modifichi
-          
+          //fprintf(stderr, "ho preso la lock\n");
           if(newFile->is_opened != connfd) 
           { //file è aperto momentaneamente da un altro client 
             risposta = -1;
@@ -309,8 +311,10 @@ static void* threadF(void* arg) //funzione dei thread worker
           Pthread_mutex_unlock(&mutexQueueFiles);
           
         }
+        fprintf(stdout, "\n\nRISULTATO RIMOZIONE file %s\n", parametro);
         printQueueFiles(queueFiles);// debug
-         SYSCALL_EXIT("writen", notused, writen(connfd, &risposta, sizeof(int)), "write", "");
+        fprintf(stdout, "\n");
+        SYSCALL_EXIT("writen", notused, writen(connfd, &risposta, sizeof(int)), "write", "");
         break;
       }
       case 'r': 
@@ -339,7 +343,7 @@ static void* threadF(void* arg) //funzione dei thread worker
               SYSCALL_EXIT("writen", notused, writen(connfd, &len, sizeof(int)), "write", "");
               fprintf(stderr, "[Comando lettura]: %s Errore Apertura\n", parametro);
            }
-           Pthread_mutex_unlock(&mutexQueueFiles);
+           Pthread_mutex_unlock(&filetmp->lock);
         } 
         else
         { //il file non è presente nel server
@@ -405,15 +409,22 @@ static void* threadF(void* arg) //funzione dei thread worker
             }
             //creo un file vuoto
             fileRam *newFile;
+            int LenName = strlen(basename(parametro));
             ec_null((newFile = malloc(sizeof(fileRam))), "malloc");
-            ec_null((newFile->nome = malloc(sizeof(char) * (strlen(basename(parametro)) + 1))), "malloc");
+            if(pthread_mutex_init(&newFile->lock, NULL) != 0)//inizializzazione lock file con controllo errore
+            {
+               perror("pthread_mutex_init");
+              exit(EXIT_FAILURE); 
+            }
+            ec_null((newFile->nome = malloc(sizeof(char) * (LenName + 1))), "malloc");
             //uso il base name per avere solo il nome del file senza path assoluto
             //inizializzazione del file
             strcpy(newFile->nome, basename(parametro));
-            newFile->nome[strlen(basename(parametro))] = '\0';
+            newFile->nome[LenName] = '\0';
             newFile->length = 0;
             newFile->buffer = NULL;
             newFile->is_opened = connfd;
+
             ec_meno1((push(&queueFiles, newFile)), "push");
             risposta = 0;//successo
           }
@@ -449,6 +460,7 @@ static void* threadF(void* arg) //funzione dei thread worker
         int risposta;
         Pthread_mutex_lock(&mutexQueueFiles);
         Node* esiste = fileExistsServer(queueFiles, parametro);
+        
         if(esiste == NULL)//file non trovato
         { 
           Pthread_mutex_unlock(&mutexQueueFiles);
@@ -456,7 +468,7 @@ static void* threadF(void* arg) //funzione dei thread worker
           //fprintf(stderr, "il file non esiste!!\n");
         } 
         else //file trovato da chiudere
-        {  
+        {  //fprintf(stderr, "sono qui\n");
           fileRam *fileramtmp = esiste->data;
           Pthread_mutex_lock(&fileramtmp->lock);
           if(fileramtmp->is_opened != connfd)//il file è gia aperto da un altro client 
@@ -468,6 +480,7 @@ static void* threadF(void* arg) //funzione dei thread worker
           { 
             fileramtmp->is_opened = -1;
             risposta = 0; //successo
+            //fprintf(stderr, "File chiuso con successo\n");
           }
           Pthread_mutex_unlock(&fileramtmp->lock);
           Pthread_mutex_unlock(&mutexQueueFiles);
