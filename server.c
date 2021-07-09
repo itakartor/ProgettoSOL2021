@@ -16,7 +16,7 @@
 #include <ctype.h>
 #include <pthread.h>
 #include <libgen.h> //basename
-
+#include <signal.h> //segnali
 #include "queue.h"
 #include "util.h"
 
@@ -45,6 +45,12 @@ int **p;            //array di pipe
 static pthread_mutex_t mutexQueueClient = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t mutexQueueFiles = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t condQueueClient = PTHREAD_COND_INITIALIZER;
+
+//flag segnali
+int flagSigInt;//SIGINT e SIGQUIT hanno il comportamento medersimo
+int flagSigHup;//SIGHUP
+int* psegnali;//pipe dei segnali
+
 
 void cleanup() { //cancellare il collegamento
   unlink(SockName);
@@ -147,21 +153,27 @@ void parserFile(void) //parser del file config.txt
 static void* threadF(void* arg) //funzione dei thread worker
 {
   int numThread = *(int*)arg;
-  fprintf(stdout, "Sono stato creato (numero thread:%d)\n", numThread); 
+  fprintf(stdout, "[Thread]: Sono stato creato (numero thread:%d)\n", numThread); 
   while(1) 
   {
     Pthread_mutex_lock(&mutexQueueClient);
-    while(queueClient->len == 0) 
+    while(queueClient->len == 0 && !flagSigInt)//in caso che il thread stia aspettando si sveglia per poi terminare
     {
-      fprintf(stderr, "sto dormendo! (numero thread:%d)\n", numThread);
+      fprintf(stdout, "[Thread]: Sto dormendo! (numero thread:%d)\n", numThread);
       if(pthread_cond_wait(&condQueueClient, &mutexQueueClient) != 0) 
       { 
         perror("[Pthread_cond_wait]"); 
         exit(EXIT_FAILURE); 
       }
     }
-    fprintf(stderr, "sono sveglio! (numero thread:%d)\n",numThread);
+    fprintf(stderr, "[Thread]: Sono sveglio! (numero thread:%d)\n",numThread);
     
+    if(flagSigInt == 1) 
+    {
+      Pthread_mutex_unlock(&mutexQueueClient);
+      fprintf(stdout, "[Segnale]: Sono il thread %d e ho ricevuto un segnale\n", numThread);
+      break;
+    }
     ComandoClient* tmp = pop(&queueClient);//predo il comando da eseguire
     Pthread_mutex_unlock(&mutexQueueClient);
 
@@ -499,11 +511,76 @@ static void* threadF(void* arg) //funzione dei thread worker
   return NULL;
 }
 
+static void* tSegnali(void* arg)//thread per la gestione dei segnali
+{
+  if(arg == NULL)//argomenti non validi
+  {
+    errno = EINVAL;
+    perror("tSegnali");
+    exit(EXIT_FAILURE);
+  }
+  //riassunto segnali da gestire
+  //control + C = segnale 2, SIGINT
+  //control + \ = segnale 3, SIGQUIT
+  //SIGINT uguale a SIGQUIT
+  //kill -1 pid = segnale 1, SIGHUP
+
+  sigset_t *mask = (sigset_t*)arg;
+  fprintf(stdout, "Sono il thread gestore segnali\n");
+  int idSegnale;
+  sigwait(mask, &idSegnale);
+  fprintf(stdout, "Sono il thread gestore segnali, ho ricevuto il segnale %d\n", idSegnale);
+  if(idSegnale == 2 || idSegnale == 3) //gestione SIGINT e SIGQUIT
+  { 
+    flagSigInt = 1;
+
+  } 
+  else 
+  {
+    if(idSegnale == 1) //gestione SIGHUP
+    { 
+      flagSigHup = 1;
+    } 
+    else//nessun segnale riconosciuto 
+    {
+      tSegnali(arg);
+      return NULL;
+    }
+  } 
+  int notused;
+  SYSCALL_EXIT("writen", notused, writen(psegnali[1], "catturato", 9), "write", "");
+  fprintf(stdout, "[tSegnale]: ho ricevuto il segnale sto uscendo\n");
+  return NULL;
+}
+
 int main(int argc, char* argv[]) 
 {
   
   parserFile();      //prendo le informazioni dal file config.txt
-  numWorkers = 2;
+  
+  //GESTIONE SEGNALI
+  flagSigInt = 0; //inizialmente non ho ricevuto un segnale SIGINT e SIGQUIT
+  flagSigHup = 0; //inizialmente non ho ricevuto un segnale SIGHUP
+  struct sigaction sahup;
+  struct sigaction saquit;
+  struct sigaction saint;
+  memset(&sahup, 0, sizeof(sigaction));
+  memset(&saquit, 0, sizeof(sigaction));
+  memset(&saint, 0, sizeof(sigaction));
+  sigset_t mask;//maschera dei segnali
+  sigemptyset(&mask);//inizializzazione
+  //aggiunta dei 3 segnali nella maschera
+  sigaddset(&mask, SIGHUP);
+  sigaddset(&mask, SIGQUIT);
+  sigaddset(&mask, SIGINT);
+  if(pthread_sigmask(SIG_SETMASK, &mask, NULL) != 0) { perror("pthread_sigmask"); exit(EXIT_FAILURE); }
+  //creazione del thread che gestirà i segnali
+  pthread_t tGestoreSegnali;
+  if(pthread_create(&tGestoreSegnali, NULL, tSegnali, (void*)&mask) != 0) { perror("pthread_sigmask"); exit(EXIT_FAILURE); }
+  //creazione pipe per i segnali
+  ec_null((psegnali = (int*)malloc(sizeof(int) * 2)), "malloc");
+  ec_meno1((pipe(psegnali)), "pipe");
+  
   cleanup();    //ripulisco vecchie connessioni 
   atexit(cleanup);
   queueClient = initQueue(); //coda dei file descriptor dei client che provano a connettersi
@@ -560,10 +637,15 @@ int main(int argc, char* argv[])
       fdmax = p[i][0];
     fprintf(stderr, "inserisco il connfd della pipe %d\n", p[i][0]);
   }
+  
+  //aggiungo alla set il bit per la pipe dei segnali
+  FD_SET(psegnali[0], &set);
+  if(psegnali[0] > fdmax)//in caso aggiorno fdmax
+    fdmax = psegnali[0];
 
   
   
-  for(;;) 
+  while(!flagSigInt)//appena riceverà il comando terminerà il prima possibile
   {
 // copio il set nella variabile temporanea per la select
     tmpset = set;
@@ -578,7 +660,6 @@ int main(int argc, char* argv[])
         if (i == listenfd) 
         { // e' una nuova richiesta di connessione
           SYSCALL_EXIT("accept", connfd, accept(listenfd, (struct sockaddr*)NULL ,NULL), "accept", "");
-          //fprintf(stderr,"il server ha accettato la connessione con %ld\n",connfd);
           FD_SET(connfd, &set);  // aggiungo il descrittore al master set
           if(connfd > fdmax)
             fdmax = connfd;  // ricalcolo il massimo
@@ -589,6 +670,26 @@ int main(int argc, char* argv[])
         //oppure per una nuova richiesta
 
         connfd = i;         //client gia connesso con una nuova richiesta 
+
+        //gestione segnali
+        if(connfd == psegnali[0])//Prima di fare qualsiasi cosa controllo se ho ricevuto un segnale 
+        { 
+          fprintf(stderr, "[Server]: Ho ricevuto segnale flagSigHup: %d flagSigInt/flagSigQuit: %d nel main\n", flagSigHup, flagSigInt);
+          char buftmp[10];
+          //leggo dalla pipe 
+          SYSCALL_EXIT("readn", notused, readn(connfd, buftmp, 9), "read", "");
+          if(pthread_cond_broadcast(&condQueueClient) != 0)//mando un broadcast per avvertire tutti i thread workers 
+          { 
+            perror("pthread_sigmask"); 
+            exit(EXIT_FAILURE); 
+          }
+          if(flagSigHup) 
+          {
+            FD_CLR(listenfd, &set);//cancello il listenfd dalla set per proibire nuove connessioni da nuovi client
+            ec_meno1((close(listenfd)), "close");
+          }
+          continue;
+        }
 
         if(isPipe(numWorkers,connfd,p)) //controllo se è una pipe
         {
@@ -641,4 +742,74 @@ int main(int argc, char* argv[])
       }
     }
   }
+  //Quando esco dal while faccio le free mancanti
+  //e termino tutti i thread
+  //do modo ai thread di terminare
+  for(int i = 0; i < numWorkers; i++)
+  {  if(pthread_join(t[i], NULL) != 0) 
+    { 
+      perror("pthread_join_Worker"); 
+      exit(EXIT_FAILURE); 
+    }
+  }
+  if(pthread_join(tGestoreSegnali, NULL) != 0) 
+  { 
+    perror("pthread_join_Segnali"); 
+    exit(EXIT_FAILURE); 
+  }
+
+  //chiusura connessioni
+
+  //chiudo le pipe dei worker, le cancello dalla set e le libero
+  for(int i = 0; i < numWorkers; i++) 
+  {
+    ec_meno1((close(p[i][0])), "close");
+    ec_meno1((close(p[i][1])), "close");
+    FD_CLR(p[i][0], &set);
+    free(p[i]);
+  }
+  free(p);
+  //chiudo la pipe dei segnali, la cancello dalla set e la libero
+  FD_CLR(psegnali[0], &set); 
+  ec_meno1((close(psegnali[0])), "close");
+  ec_meno1((close(psegnali[1])), "close");
+  free(psegnali);
+
+  //chiusura connessioni attive
+  for(int i = fdmax; i >= 0; --i) 
+  {
+    if(FD_ISSET(i, &set)) 
+    {
+      fprintf(stderr, "[Server]: Chiudo la connesione %d\n", i);
+      ec_meno1((close(i)), "close");
+    }
+  }
+  cleanup();
+  atexit(cleanup);
+
+  free(arrtmp); //free array numero thread
+  free(t); //free array di thread
+
+  //free della coda dei file
+  fileRam* tmpcodafile;
+  do
+  {
+    tmpcodafile = pop(&queueFiles);
+    free(tmpcodafile->nome);
+    free(tmpcodafile->buffer);
+    free(tmpcodafile);
+  }while(tmpcodafile != NULL);
+  free(queueFiles);
+
+  //free della coda dei client (nel caso del SIGINT/SIGQUIT)
+  ComandoClient* tmpcodacomandi;
+  do
+  {
+    tmpcodacomandi = pop(&queueClient);
+    free(tmpcodacomandi->parametro);
+    free(tmpcodacomandi);
+  }while(tmpcodacomandi != NULL);
+  free(queueClient);
+  
+  //chiusura socket, pipe
 }
