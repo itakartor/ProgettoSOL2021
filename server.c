@@ -33,7 +33,17 @@ int spazio = 0;
 int numeroFile = 0; //informazioni del file config
 int numWorkers = 0;
 char* SockName = NULL;
- 
+
+//statistiche fine esecuzione
+typedef struct _stats 
+{
+  int FileMaxMemorizzati;
+  double spazioMaxOccupato;
+  int numSceltaVittime;
+  pthread_mutex_t LockStats;
+} Statistiche;
+Statistiche *s;
+
 fd_set set;         //maschera dei bit
 Queue *queueClient; //coda dei client che fanno richieste
 Queue *queueFiles; //coda dei file memorizzati
@@ -243,6 +253,12 @@ static void* threadF(void* arg) //funzione dei thread worker
             {
               fileRam *fileramtmptrash;
               Pthread_mutex_lock(&mutexQueueFiles);
+              
+              Pthread_mutex_lock(&s->LockStats);
+              if(spazioOccupato + lentmp > spazio)
+                s->numSceltaVittime++;
+              Pthread_mutex_unlock(&s->LockStats);
+              
               while(spazioOccupato + lentmp > spazio)
               { //deve iniziare ad espellere file
                 fprintf(stderr, "[Problema]: Spazio residuo nullo, inizio ad espellere dei file\n");
@@ -282,9 +298,17 @@ static void* threadF(void* arg) //funzione dei thread worker
               
               risposta = 0;//successo  
               
-              fprintf(stderr, "\n\nSTO STAMPANDO LA CODA\n");
-              printQueueFiles(queueFiles);//debug
-              fprintf(stderr, "\n\n");
+              //aggiorno le statistiche del server
+              Pthread_mutex_lock(&s->LockStats);
+              if(queueFiles->len > s->numSceltaVittime)
+                s->FileMaxMemorizzati = queueFiles->len;
+              if(spazioOccupato > s->spazioMaxOccupato)
+                s->spazioMaxOccupato = spazioOccupato;
+              Pthread_mutex_unlock(&s->LockStats);
+              
+              //fprintf(stderr, "\n\nSTO STAMPANDO LA CODA\n");
+              //printQueueFiles(queueFiles);//debug
+              //fprintf(stderr, "\n\n");
                 
               SYSCALL_EXIT("writen", notused, writen(connfd, &risposta, sizeof(int)), "write", ""); //scrivo nel client il risultato dell'operazione
             }
@@ -556,6 +580,15 @@ static void* tSegnali(void* arg)//thread per la gestione dei segnali
 int main(int argc, char* argv[]) 
 {
   
+  //inizializzo statistiche del server
+  ec_null((s = malloc(sizeof(Statistiche))), "malloc");
+  if(pthread_mutex_init(&s->LockStats, NULL) != 0) { perror("pthread_mutex_init"); exit(EXIT_FAILURE); }
+  Pthread_mutex_lock(&s->LockStats);
+  s->FileMaxMemorizzati = 0;
+  s->spazioMaxOccupato = 0;
+  s->numSceltaVittime = 0;
+  Pthread_mutex_unlock(&s->LockStats);
+
   parserFile();      //prendo le informazioni dal file config.txt
   
   //GESTIONE SEGNALI
@@ -787,6 +820,15 @@ int main(int argc, char* argv[])
   cleanup();
   atexit(cleanup);
 
+//stampo le statistiche
+  fprintf(stdout, "\n\nStatistiche del server raggiunte:\n");
+  fprintf(stdout, "Numero massimo di File caricati sul Server: %d\n", s->FileMaxMemorizzati);
+  fprintf(stdout, "Numero massimo di Spazio occupato sul Server: %.2f MB\n", s->spazioMaxOccupato / 1000000);
+  fprintf(stdout, "Numero di volte che ho scelto le vittime: %d\n", s->numSceltaVittime);
+  fprintf(stdout, "\nCoda File Server:\n");
+  printQueueFiles(queueFiles);
+  fprintf(stdout, "\n");
+
   free(arrtmp); //free array numero thread
   free(t); //free array di thread
 
@@ -810,6 +852,6 @@ int main(int argc, char* argv[])
     free(tmpcodacomandi);
   }while(tmpcodacomandi != NULL);
   free(queueClient);
-  
+
   //chiusura socket, pipe
 }
