@@ -17,12 +17,12 @@
 #include <pthread.h>
 #include <libgen.h> //basename
 #include <signal.h> //segnali
+
 #include "queue.h"
 #include "util.h"
 
 #define MAXBUFFER 1000
 #define MAXSTRING 100
-#define CONFIGFILE "config.txt"
 #define SPAZIO "spazio"
 #define NUMEROFILE "numeroFile"
 #define SOC "sockName"
@@ -66,7 +66,7 @@ void cleanup() { //cancellare il collegamento
   unlink(SockName);
 }
 
-void parserFile(void) //parser del file config.txt
+void parserFile(char* pathConfig) //parser del file config.txt
 {   
   int i;
   char* save;
@@ -76,7 +76,7 @@ void parserFile(void) //parser del file config.txt
   ec_null((buffer = malloc(sizeof(char) * MAXBUFFER)), "malloc");
   FILE* p;
 
-  ec_null((p = fopen(CONFIGFILE, "r")), "fopen");
+  ec_null((p = fopen(pathConfig, "r")), "fopen");
 
   while(fgets(buffer, MAXBUFFER, p)) 
   {
@@ -104,12 +104,10 @@ void parserFile(void) //parser del file config.txt
       {
         perror("errato config.txt (isNumber)");
         exit(EXIT_FAILURE);
-        //fprintf(stderr, "ERRORE %s non è un numero\n", tmp[1]);
       }
     }
     if(strcmp(tmp[0], NUMEROFILE) == 0)//numero massimo di file
     {
-      //fprintf(stderr,"questo è il risultato dello numero file %d\n", isNumber(tmp[1],&numeroFile));
       if(!isNumber(tmp[1], &numeroFile)) 
       {}
       else
@@ -125,7 +123,6 @@ void parserFile(void) //parser del file config.txt
     }
     if(strcmp(tmp[0], WORK) == 0)//numero di thread worker
     {
-      //fprintf(stderr,"questo è il risultato dello worker %d\n", isNumber(tmp[1],&numWorkers));  
       if(!isNumber(tmp[1],&numWorkers)) 
       {}
       else 
@@ -153,10 +150,10 @@ void parserFile(void) //parser del file config.txt
     exit(EXIT_FAILURE);
   }
   //stampa di debug
-  fprintf(stdout,"\n\nSpazio massimo: %d\n", spazio);
-  fprintf(stdout,"Numero file massimi: %d\n", numeroFile);
-  fprintf(stdout,"Nome socket: %s\n", SockName);
-  fprintf(stdout,"numero thread Workers: %d\n", numWorkers);
+  fprintf(stdout,"\n\n-Spazio massimo: %d\n", spazio);
+  fprintf(stdout,"-Numero file massimi: %d\n", numeroFile);
+  fprintf(stdout,"-Nome socket: %s\n", SockName);
+  fprintf(stdout,"-Numero thread Workers: %d\n", numWorkers);
   fprintf(stdout,"\n\n");
 }
 
@@ -579,6 +576,14 @@ static void* tSegnali(void* arg)//thread per la gestione dei segnali
 
 int main(int argc, char* argv[]) 
 {
+   if(argc != 2) 
+   {
+      fprintf(stderr, "[Errore Server]: devi passare il path di un file config adeguato\n");
+      exit(EXIT_FAILURE); 
+   }
+  
+  parserFile(argv[1]);      //prendo le informazioni dal file config.txt
+  
   
   //inizializzo statistiche del server
   ec_null((s = malloc(sizeof(Statistiche))), "malloc");
@@ -589,7 +594,7 @@ int main(int argc, char* argv[])
   s->numSceltaVittime = 0;
   Pthread_mutex_unlock(&s->LockStats);
 
-  parserFile();      //prendo le informazioni dal file config.txt
+  
   
   //GESTIONE SEGNALI
   flagSigInt = 0; //inizialmente non ho ricevuto un segnale SIGINT e SIGQUIT
