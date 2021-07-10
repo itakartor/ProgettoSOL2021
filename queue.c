@@ -105,7 +105,7 @@ void printQueueFiles(Queue *q) {
   fileRam *no = NULL;
   while(tmp != NULL) {
     no = tmp->data;
-    fprintf(stdout, "nomefile %s length %ld\n", no->nome, no->length);
+    fprintf(stdout, "Nomefile -> %s, Dimensione -> %ld bytes,\n", no->nome, no->length);
     tmp = tmp->next;
   }
 }

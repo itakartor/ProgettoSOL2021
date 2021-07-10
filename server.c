@@ -28,6 +28,7 @@
 #define SOC "sockName"
 #define WORK "numWorkers"
 #define MAXBACKLOG 32
+#define BYTETOMEGA 1048576
 
 int spazio = 0;
 int numeroFile = 0; //informazioni del file config
@@ -149,8 +150,10 @@ void parserFile(char* pathConfig) //parser del file config.txt
     fprintf(stderr, "config.txt errato\n");
     exit(EXIT_FAILURE);
   }
+  float cambioSpazio = spazio / BYTETOMEGA;
+
   //stampa di debug
-  fprintf(stdout,"\n\n-Spazio massimo: %d\n", spazio);
+  fprintf(stdout,"\n\n-Spazio massimo: %.2f MB\n", cambioSpazio);
   fprintf(stdout,"-Numero file massimi: %d\n", numeroFile);
   fprintf(stdout,"-Nome socket: %s\n", SockName);
   fprintf(stdout,"-Numero thread Workers: %d\n", numWorkers);
@@ -238,7 +241,7 @@ static void* threadF(void* arg) //funzione dei thread worker
             int cista = 1;//il file ci sta 
             if(lentmp > spazio || lentmp + newFile->length > spazio) //in caso che stia creando un file troppo grande o stia scrivendo troppe cose sul file per la capienza del server 
             {
-              fprintf(stderr, "[Errore]:file %s troppo grande (%ld) (capienza massima %d)\n", newFile->nome, newFile->length, spazio);
+              fprintf(stderr, "[Errore]:file %s troppo grande (%ld) (capienza massima %d)\n", newFile->nome, newFile->length + lentmp, spazio);
                 //vado a scrivere nel socket che il file non ci sta
               if(lentmp > spazio)
                 removeFromQueue(&queueFiles, esiste);//rimuovo il file dalla coda perchè ho gia inserito il file
@@ -439,8 +442,11 @@ static void* threadF(void* arg) //funzione dei thread worker
               fprintf(stderr, "[Problema]: Server pieno di numero \n");
               fileRam *fileramtmptrash = pop(&queueFiles);
               fprintf(stderr, "[Problema]: Sto liberando %s\n", fileramtmptrash->nome);
-
-              //vanno fatte FREE
+              spazioOccupato-=fileramtmptrash->length;
+              //libero il file 
+              free(fileramtmptrash->nome);
+              free(fileramtmptrash->buffer);
+              free(fileramtmptrash);
             }
             //creo un file vuoto
             fileRam *newFile;
@@ -760,13 +766,17 @@ int main(int argc, char* argv[])
             fdmax = updatemax(set, fdmax);
 
 
-          if(nattivi > 0) {
+          if(nattivi > 0) 
+          {
             if(flagSigHup)
               fprintf(stderr, "ci sono connessioni attive, nattivi %d\n", nattivi);
-          } else {
+          } 
+          else 
+          {
             if(flagSigHup)
               fprintf(stderr, "Non ci sono altre connessioni\n");
-            if(flagSigHup) {
+            if(flagSigHup) 
+            {
               flagSigInt = 1; //a questo punto si deve comportare come avesse ricevuto un sigint
               if(pthread_cond_broadcast(&condQueueClient) != 0) { perror("pthread_cond_broadcast"); exit(EXIT_FAILURE); }
             }
@@ -848,7 +858,7 @@ int main(int argc, char* argv[])
 //stampo le statistiche
   fprintf(stdout, "\n\nStatistiche del server raggiunte:\n");
   fprintf(stdout, "Numero massimo di File caricati sul Server: %d\n", s->FileMaxMemorizzati);
-  fprintf(stdout, "Numero massimo di Spazio occupato sul Server: %.2f MB\n", s->spazioMaxOccupato / 1000000);
+  fprintf(stdout, "Numero massimo di Spazio occupato sul Server: %.2f MB\n", s->spazioMaxOccupato / BYTETOMEGA);
   fprintf(stdout, "Numero di volte che ho scelto le vittime: %d\n", s->numSceltaVittime);
   fprintf(stdout, "\nCoda File Server:\n");
   printQueueFiles(queueFiles);
