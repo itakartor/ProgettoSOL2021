@@ -96,8 +96,8 @@ int arg_w(char* optarg, Queue **q)
                 if(contavirgole == 1)//controllare se ha due argomenti e se l'ultimo token è un numero
                 {
                         
-                        //fprintf(stderr, "tmp da vedere %s\n", tmp);
-                        if(isNumber(tmp, &num))
+                        
+                        if(!isNumber(tmp, &num))
                         {
                                 //fprintf(stderr,"questo è un numero -> %d\n",num);
                         }

@@ -63,6 +63,7 @@ int openConnection(const char* sockname, int msec, const struct timespec abstime
     if(sockname == NULL || msec < 0) //argomenti non validi
     { 
         errno = EINVAL;
+        perror("[openConnection]");
         return -1;
     }
 
@@ -74,6 +75,7 @@ int openConnection(const char* sockname, int msec, const struct timespec abstime
     serv_addr.sun_family = AF_UNIX;
     strncpy(serv_addr.sun_path,sockname, LenSockName+1);
     serv_addr.sun_path[LenSockName] = '\0';
+    
     // setting waiting time
     struct timespec wait_time;
     // no need to check because msec > 0 and &wait_time != NULL

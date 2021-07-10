@@ -551,14 +551,14 @@ static void* tSegnali(void* arg)//thread per la gestione dei segnali
   int idSegnale;
   sigwait(mask, &idSegnale);
   fprintf(stdout, "Sono il thread gestore segnali, ho ricevuto il segnale %d\n", idSegnale);
-  if(idSegnale == 2 || idSegnale == 3) //gestione SIGINT e SIGQUIT
+  if(idSegnale == SIGINT || idSegnale == SIGQUIT) //gestione SIGINT e SIGQUIT
   { 
     flagSigInt = 1;
 
   } 
   else 
   {
-    if(idSegnale == 1) //gestione SIGHUP
+    if(idSegnale == SIGHUP) //gestione SIGHUP
     { 
       flagSigHup = 1;
     } 
@@ -643,7 +643,7 @@ int main(int argc, char* argv[])
   }
 
   int listenfd; //codice identificato del listen per accettare le nuove connessioni
-
+  int nattivi = 0;
   SYSCALL_EXIT("socket", listenfd, socket(AF_UNIX, SOCK_STREAM, 0), "socket", "");
 
   struct sockaddr_un serv_addr;
@@ -699,6 +699,7 @@ int main(int argc, char* argv[])
         { // e' una nuova richiesta di connessione
           SYSCALL_EXIT("accept", connfd, accept(listenfd, (struct sockaddr*)NULL ,NULL), "accept", "");
           FD_SET(connfd, &set);  // aggiungo il descrittore al master set
+          nattivi++;
           if(connfd > fdmax)
             fdmax = connfd;  // ricalcolo il massimo
           continue;
@@ -716,11 +717,16 @@ int main(int argc, char* argv[])
           char buftmp[10];
           //leggo dalla pipe 
           SYSCALL_EXIT("readn", notused, readn(connfd, buftmp, 9), "read", "");
-          if(pthread_cond_broadcast(&condQueueClient) != 0)//mando un broadcast per avvertire tutti i thread workers 
-          { 
-            perror("pthread_sigmask"); 
-            exit(EXIT_FAILURE); 
+          if(flagSigInt == 1 || nattivi == 0)
+          {
+            flagSigInt = 1;
+            if(pthread_cond_broadcast(&condQueueClient) != 0)//mando un broadcast per avvertire tutti i thread workers 
+            { 
+              perror("pthread_sigmask"); 
+              exit(EXIT_FAILURE); 
+            }
           }
+          
           if(flagSigHup) 
           {
             FD_CLR(listenfd, &set);//cancello il listenfd dalla set per proibire nuove connessioni da nuovi client
@@ -743,15 +749,29 @@ int main(int argc, char* argv[])
         msg_t str;
         int err = readn(connfd, &str.len, sizeof(int));
         
-        if(err == 0) //socket vuoto
+        if(err == 0 || err == -1) //socket vuoto
         {
           fprintf(stderr, "client disconnesso\n");
-          
+          nattivi--;
           FD_CLR(connfd, &set);//libero il bit sulla maschera per fare spazio e chiudo il socket
           ec_meno1((close(connfd)), "close");
           
           if (connfd == fdmax)
             fdmax = updatemax(set, fdmax);
+
+
+          if(nattivi > 0) {
+            if(flagSigHup)
+              fprintf(stderr, "ci sono connessioni attive, nattivi %d\n", nattivi);
+          } else {
+            if(flagSigHup)
+              fprintf(stderr, "Non ci sono altre connessioni\n");
+            if(flagSigHup) {
+              flagSigInt = 1; //a questo punto si deve comportare come avesse ricevuto un sigint
+              if(pthread_cond_broadcast(&condQueueClient) != 0) { perror("pthread_cond_broadcast"); exit(EXIT_FAILURE); }
+            }
+
+          }
           continue;
         }
         if (err<0) { fprintf(stderr, "[Errore]:lettura socket vuoto\n"); }
