@@ -10,11 +10,11 @@ fi
 saveDir=$1
 commonConf="-f mysock.sk -t 200 -p"
 #configurazioni di clients
-confClient1="$commonConf -w .,5"
-confClient2="$commonConf -W client.c,server.c,server"
-confClient3="$commonConf -d $saveDir -r client.c"
-confClient4="$commonConf -d $saveDir -R 4"
-confClient5="$commonConf -c client.c,server.c -W ./FileTest/file1.txt,./FileTest/file3.txt,./FileTest/file2.txt"
+confClient1="$commonConf -w ./Test "
+confClient2="$commonConf -W Parser.c,queue.c"
+confClient3="$commonConf -d $saveDir -r queue.c"
+confClient4="$commonConf -d $saveDir -R 7"
+confClient5="$commonConf -c Parser.c,queue.c -W ./FileTest/file1.txt,./FileTest/file3.txt,./FileTest/file2.txt"
 
 #setup array di configurazioni client
 clientConf[0]=$confClient1
@@ -26,7 +26,7 @@ clientConf[4]=$confClient5
 #creazione shell in bg con valgrind per ottenerne il PID tramite $!
 rm mysock.sk
 valgrind --leak-check=full --show-leak-kinds=all ./server configs/config1.txt &
-#./server configs/config2.txt &
+#./server configs/config1.txt &
 serverPID=$!
 
 #se la cartella già esiste, la cancello e la ricrerò tramite lo script

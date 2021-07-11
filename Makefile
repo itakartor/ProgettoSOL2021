@@ -25,9 +25,9 @@ all:
 
 cleanall:
 	rm -rf $(SOCKNAME) $(TARGETS)
-	#rm $(CLIENTOUTPUT_DIR1)/*
+	rm $(CLIENTOUTPUT_DIR1)/*
 	#rmdir $(CLIENTOUTPUT_DIR1)
-	#rm $(CLIENTOUTPUT_DIR2)/*
+	rm $(CLIENTOUTPUT_DIR2)/*
 	#rmdir $(CLIENTOUTPUT_DIR2)
 
 #targets per generare gli eseguibili
