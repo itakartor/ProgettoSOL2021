@@ -408,7 +408,7 @@ int readNFiles(int n, const char* dirname) //int n è il numero dei file da legg
     free(arr_buf[i]);
   }
   free(arr_buf);
-  return 0;
+  return n;//devo ritornare il numero dei file letti
 }
 
 int appendToFile(const char* pathname, void* buf, int size) 
@@ -551,6 +551,7 @@ int EseguiComandoClient(NodoComando *tmp)
             fprintf(stderr,"[Problema]: non ho una cartella dove salvare il file \n");
             return -1; //errore
           }
+          free(buf);
         } 
       }//se l'openFile ha un errore
       else
@@ -664,7 +665,7 @@ int visitaRicorsiva(char* name, int *n, Queue **q)//name è il nome del path e n
           strcpy(new->name, buffer);
           new->name[strlen(buffer)] = '\0';
           new->n = 0;
-          if(push(q, new) == -1) 
+          if(pushTesta(q, new) == -1) 
             return -1;
           free(buffer);
         }

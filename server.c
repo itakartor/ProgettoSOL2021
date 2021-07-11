@@ -215,7 +215,7 @@ static void* threadF(void* arg) //funzione dei thread worker
         Node* esiste = fileExistsServer(queueFiles, parametro);
         //fprintf(stderr, "sto per lasciare la lock\n");
         Pthread_mutex_unlock(&mutexQueueFiles);
-
+        int cista = 1;//il file ci sta inizialmente
         int risposta = 0;
         if(esiste == NULL)//errore: ci sono stati errori nella ricerca/creazione file 
         { 
@@ -235,10 +235,8 @@ static void* threadF(void* arg) //funzione dei thread worker
           if(risposta != -1)
           {
             int lentmp;
-            //fprintf(stderr, "sto scrivendo\n");
-            SYSCALL_EXIT("readn", notused, readn(connfd, &lentmp, sizeof(int)), "read", "");//leggo la lunghezza del file 
+            SYSCALL_EXIT("readn", notused, readn(connfd, &lentmp, sizeof(int)), "read", "");//leggo la lunghezza del contenuto del file 
               
-            int cista = 1;//il file ci sta 
             if(lentmp > spazio || lentmp + newFile->length > spazio) //in caso che stia creando un file troppo grande o stia scrivendo troppe cose sul file per la capienza del server 
             {
               fprintf(stderr, "[Errore]:file %s troppo grande (%ld) (capienza massima %d)\n", newFile->nome, newFile->length + lentmp, spazio);
@@ -246,12 +244,14 @@ static void* threadF(void* arg) //funzione dei thread worker
               if(lentmp > spazio)
                 removeFromQueue(&queueFiles, esiste);//rimuovo il file dalla coda perchè ho gia inserito il file
               
+              //libero il file tanto non mi servirà perchè non posso inserirlo 
               free(newFile->nome);
+              Pthread_mutex_unlock(&newFile->lock);
               free(newFile);
               cista = 0;
             }
           
-            SYSCALL_EXIT("writen", notused, writen(connfd, &cista, sizeof(int)), "write", "");
+            SYSCALL_EXIT("writen", notused, writen(connfd, &cista, sizeof(int)), "write", "");//scrivo al client se il file può essere inserito o meno
             if(cista)
             {
               fileRam *fileramtmptrash;
@@ -262,8 +262,8 @@ static void* threadF(void* arg) //funzione dei thread worker
                 s->numSceltaVittime++;
               Pthread_mutex_unlock(&s->LockStats);
               
-              while(spazioOccupato + lentmp > spazio)
-              { //deve iniziare ad espellere file
+              while(spazioOccupato + lentmp > spazio)//Espello file fino a quando non ne ho abbastanza per inserire il nuovo file
+              { 
                 fprintf(stderr, "[Problema]: Spazio residuo nullo, inizio ad espellere dei file\n");
                 fileRam *firstel = returnFirstEl(queueFiles);
                 if(newFile != firstel)//devo evitare di rimuovere il file che sto cercando di inserire 
@@ -282,20 +282,20 @@ static void* threadF(void* arg) //funzione dei thread worker
               spazioOccupato+=lentmp;//aggiorno lo spazio occupato
               Pthread_mutex_unlock(&mutexQueueFiles);
               
-              char* buftmp;//contenuto del file da leggere 
-              ec_null((buftmp = malloc(sizeof(char) * lentmp)), "malloc");
-              SYSCALL_EXIT("readn", notused, readn(connfd, buftmp, lentmp*sizeof(char)), "read", "");//leggo il contenuto del file
+              char* ContenutoFile;//contenuto del file da leggere 
+              ec_null((ContenutoFile = malloc(sizeof(char) * lentmp)), "malloc");
+              SYSCALL_EXIT("readn", notused, readn(connfd, ContenutoFile, lentmp*sizeof(char)), "read", "");//leggo il contenuto del file
               
               if(newFile->buffer == NULL)//file appena creato, faccio la prima scrittura
               { 
                   newFile->length = lentmp;
-                  newFile->buffer = buftmp;
+                  newFile->buffer = ContenutoFile;
               } 
-              else
+              else//sto scrivendo in append
               {
                 ec_null((newFile->buffer = realloc(newFile->buffer, sizeof(char) * (lentmp + newFile->length))), "realloc");
-                for(int i = 0; i < lentmp; i++)
-                  newFile->buffer[i + newFile->length] = buftmp[i];
+                for(int i = 0; i < lentmp; i++) //aggiunta in append
+                  newFile->buffer[i + newFile->length] = ContenutoFile[i];
                 newFile->length+=lentmp;
               }
               
@@ -303,7 +303,7 @@ static void* threadF(void* arg) //funzione dei thread worker
               
               //aggiorno le statistiche del server
               Pthread_mutex_lock(&s->LockStats);
-              if(queueFiles->len > s->numSceltaVittime)
+              if(queueFiles->len > s->FileMaxMemorizzati)
                 s->FileMaxMemorizzati = queueFiles->len;
               if(spazioOccupato > s->spazioMaxOccupato)
                 s->spazioMaxOccupato = spazioOccupato;
@@ -316,7 +316,8 @@ static void* threadF(void* arg) //funzione dei thread worker
               SYSCALL_EXIT("writen", notused, writen(connfd, &risposta, sizeof(int)), "write", ""); //scrivo nel client il risultato dell'operazione
             }
           }
-          Pthread_mutex_unlock(&newFile->lock);
+          if(cista != 0)
+            Pthread_mutex_unlock(&newFile->lock);
         }
         break;
       }
@@ -346,6 +347,7 @@ static void* threadF(void* arg) //funzione dei thread worker
             spazioOccupato-= tmpfileramtrash->length;
             risposta = removeFromQueue(&queueFiles, esiste);
             fprintf(stderr, "[Comando Rimozione]: file rimosso %s Successo \n", parametro);
+            //liberazione del file trash
             free(tmpfileramtrash->nome);
             if(tmpfileramtrash->buffer != NULL)
               free(tmpfileramtrash->buffer);
@@ -412,17 +414,19 @@ static void* threadF(void* arg) //funzione dei thread worker
         SYSCALL_EXIT("writen", notused, writen(connfd, &numDaLeggere, sizeof(int)), "write", "");
         Node* nodetmp = queueFiles->head;
         fileRam *fileramtmp;
-        char* buftmp;
+        char* nomeFileTmp; //mi serve salvare i nomi dei file
         for(int i = 0; i < numDaLeggere; i++)//salvo i nomi dei file in un array per poi leggerli in un secondo momento 
         {
           fileramtmp = nodetmp->data;
-          ec_null((buftmp = malloc(sizeof(char) * strlen(fileramtmp->nome))), "malloc");
-          strcpy(buftmp, fileramtmp->nome);
-          int buftmplen = strlen(buftmp);
-          SYSCALL_EXIT("writen", notused, writen(connfd, &buftmplen, sizeof(int)), "write", "");
-          SYSCALL_EXIT("writen", notused, writen(connfd, buftmp, buftmplen * sizeof(char)), "write", "");
+          int nomeFileTmpLen = strlen(fileramtmp->nome);
+          ec_null((nomeFileTmp = malloc(sizeof(char) * (nomeFileTmpLen+1))), "malloc");
+          strcpy(nomeFileTmp, fileramtmp->nome);
+          nomeFileTmp[nomeFileTmpLen] = '\0' ;
+
+          SYSCALL_EXIT("writen", notused, writen(connfd, &nomeFileTmpLen, sizeof(int)), "write", "");
+          SYSCALL_EXIT("writen", notused, writen(connfd, nomeFileTmp, nomeFileTmpLen * sizeof(char)), "write", "");
           
-          free(buftmp);
+          free(nomeFileTmp);
           nodetmp = nodetmp->next;
         }
         break;

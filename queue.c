@@ -151,6 +151,7 @@ int removeFromQueue(Queue **q, Node* toDelete)
       }
       free(tmp);
       ok = 1; //successo, cancellato
+      return ok;
     }
     tmp_prec = tmp;
     tmp = tmp->next;
