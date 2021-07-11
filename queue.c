@@ -35,7 +35,7 @@ Queue* initQueue() { //inizializza una coda vuota
 int push(Queue **q, void* el) //inserimento in coda in una FIFO
 { 
   Node *new;
-  ec_null(new = (malloc(sizeof(Node))), "malloc");
+  ec_null((new = malloc(sizeof(Node))), "malloc");
   
   new->data = el;
   new->next = NULL;
@@ -48,6 +48,23 @@ int push(Queue **q, void* el) //inserimento in coda in una FIFO
     ((*q)->tail)->next = new;
     (*q)->tail = new;
     (*q)->len++; // = *q->len + 1;
+  }
+  return 0;
+}
+int pushTesta(Queue **q, void* el) { //inserimento in testa in una FIFO
+  Node *n;
+  ec_null((n = malloc(sizeof(Node))), "malloc");
+  if(*q == NULL)
+    return -1;
+  n->data = el;
+  n->next = (*q)->head;
+  if((*q)->len == 0) { //inserimento in coda vuota
+    (*q)->head = n;
+    (*q)->tail = n;
+    (*q)->len = 1;
+  } else { //inserimento in testa (lista non vuota)
+    (*q)->head = n;
+    (*q)->len++;
   }
   return 0;
 }
@@ -187,5 +204,6 @@ void* pop2(Queue **q) { //restituisce il secondo elemento e lo rimuove dalla que
     return ret;
   }
 }
+
 
 //#endif

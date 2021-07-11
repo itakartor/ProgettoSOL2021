@@ -1,32 +1,21 @@
 CC = gcc
 CFLAGS = -g
-CONFIGFILE = ./configs/config.txt
-CLIENTOUTPUT_DIR1 = ./OutPut
-CLIENTOUTPUT_DIR2 = ./outputTest2
+CONFIGFILE1 = ./configs/config1.txt
+CLIENTOUTPUT_DIR1 = ./output/outputTest1
+CLIENTOUTPUT_DIR2 = ./output/outputTest2
 FLAG_INCLUDE_DIR = -I ./includes/
 SOCKNAME = ./mysock.sk
 TARGETS = server client 
 VALGRIND_OPTIONS = valgrind --leak-check=full
-#QUEUE_DATA_TYPES_DEP = ./Queue_Data_Types/
-#CONFIG_UTILITY_DEP = ./ConfigAndUtilities/
-
-#COMMON_DEPS = $(QUEUE_DATA_TYPES_DEP)generic_queue.c $(CONFIG_UTILITY_DEP)utility.c \
- 	$(QUEUE_DATA_TYPES_DEP)request.c $(QUEUE_DATA_TYPES_DEP)file.c
 
 SERVER_DEPS = server.c util.c queue.c
 
-#fileStorageServer.c $(QUEUE_DATA_TYPES_DEP)descriptor.c \
- $(CONFIG_UTILITY_DEP)serverInfo.c $(COMMON_DEPS)
 
 CLIENT_DEPS = client.c util.c queue.c Parser.c
 
-#fileStorageClient.c $(CONFIG_UTILITY_DEP)clientConfig.c \
- serverAPI.c $(COMMON_DEPS)
 
 CLIENTCONFIGOPTIONS = -f $(SOCKNAME) -p -t 200
 
-#OBJ_FOLDER = ./build/objs
-#LIB_FOLDER = ./libs
 
 
 #configurazioni di un client per testare singolarmente
@@ -52,15 +41,8 @@ all:
 cleanall:
 	rm -rf $(SOCKNAME) $(TARGETS)
 	rm $(CLIENTOUTPUT_DIR1)/*
-	#rm -f $(OBJ_FOLDER)/*.o
-	#rm -f $(LIB_FOLDER)/*.so
-	#rm -f ./SaveReadFileDirectory/AllCacheFilesTest2/*
-	#rm -f ./SaveReadFileDirectory/AllCacheFilesTest1/*
-	
-
-#rm $(CLIENTOUTPUT_DIR1)/*
 #rmdir $(CLIENTOUTPUT_DIR1)
-#rm $(CLIENTOUTPUT_DIR2)/*
+	rm $(CLIENTOUTPUT_DIR2)/*
 #rmdir $(CLIENTOUTPUT_DIR2)
 
 #targets per generare gli eseguibili

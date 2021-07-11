@@ -63,8 +63,10 @@ int flagSigHup;//SIGHUP
 int* psegnali;//pipe dei segnali
 
 
-void cleanup() { //cancellare il collegamento
+void cleanup() //cancellare il collegamento
+{ 
   unlink(SockName);
+  free(SockName);
 }
 
 void parserFile(char* pathConfig) //parser del file config.txt
@@ -82,36 +84,33 @@ void parserFile(char* pathConfig) //parser del file config.txt
   while(fgets(buffer, MAXBUFFER, p)) 
   {
     save = NULL;
+    buffer[strlen(buffer) - 1] = '\0';//sto levando il carattere (accapo)
     token = strtok_r(buffer, " ",  &save);
-    char** tmp;
+    char** tmp = NULL;
     ec_null((tmp = malloc(sizeof(char*) * 2)), "malloc");
+    tmp[0] = NULL;//inizializzazione della variabile del nome dei parametri
+    tmp[1] = NULL;//inizializzazione della variabile dell'argomento dei parametri
     i = 0;        //indice dell'array tmp per salvare l'argomento della variabile di interesse
     
     while(token) 
     {
       ec_null((tmp[i] = malloc(sizeof(char) * MAXSTRING)), "malloc");
-      strncpy(tmp[i], token, strlen(token) - i); //l'argomento non deve prendere il terminatore di riga (accapo)
+      strcpy(tmp[i], token); 
       token = strtok_r(NULL, " ", &save);
       i++;
     }
 
     if(strcmp(tmp[0], SPAZIO) == 0) //controllo se il file è formatatto nel modo corretto 
     {                               //esempio:spazio 100
-      if(!isNumber(tmp[1],&spazio)) //spazio massimo dedicato
-      {
-        //fprintf(stderr,"questo è il risultato %d\n",spazio);
-      } 
-      else 
+      if(isNumber(tmp[1],&spazio) != 0) //spazio massimo dedicato
       {
         perror("errato config.txt (isNumber)");
         exit(EXIT_FAILURE);
-      }
+      } 
     }
     if(strcmp(tmp[0], NUMEROFILE) == 0)//numero massimo di file
     {
-      if(!isNumber(tmp[1], &numeroFile)) 
-      {}
-      else
+      if(isNumber(tmp[1], &numeroFile) != 0) 
       {
         perror("errato config.txt (isNumber)");
         exit(EXIT_FAILURE);
@@ -119,14 +118,14 @@ void parserFile(char* pathConfig) //parser del file config.txt
     }
     if(strcmp(tmp[0], SOC) == 0)//nome del socket
     {
-      ec_null((SockName = malloc(sizeof(char) * strlen(tmp[1]))), "malloc");
-      strncpy(SockName, tmp[1], strlen(tmp[1]));
+      int LenSockName = strlen(tmp[1]);
+      ec_null((SockName = malloc(sizeof(char) * (LenSockName+1))), "malloc");
+      strcpy(SockName, tmp[1]);
+      SockName[LenSockName] ='\0';
     }
     if(strcmp(tmp[0], WORK) == 0)//numero di thread worker
     {
-      if(!isNumber(tmp[1],&numWorkers)) 
-      {}
-      else 
+      if(isNumber(tmp[1],&numWorkers) != 0) 
       {
         perror("errato config.txt (isNumber)");
         exit(EXIT_FAILURE);
@@ -198,9 +197,10 @@ static void* threadF(void* arg) //funzione dei thread worker
     char comando = tmp->comando;
     char* parametro = tmp->parametro;
 
-    fprintf(stderr,"\n\nquesto è il comando %c\n",tmp->comando);
-    fprintf(stderr,"questo è l'argomento %s\n",tmp->parametro);
-    fprintf(stderr,"questo è l'ID %ld\n\n",tmp->connfd);
+    fprintf(stderr,"\n\nRichiesta ricevuta:\n");
+    fprintf(stderr,"[Server]: %c è il comando\n",tmp->comando);
+    fprintf(stderr,"[Server]: %s è l'argomento\n",tmp->parametro);
+    fprintf(stderr,"[Server]: %ld è l'ID\n\n",tmp->connfd);
 
     int notused;
 
@@ -245,6 +245,9 @@ static void* threadF(void* arg) //funzione dei thread worker
                 //vado a scrivere nel socket che il file non ci sta
               if(lentmp > spazio)
                 removeFromQueue(&queueFiles, esiste);//rimuovo il file dalla coda perchè ho gia inserito il file
+              
+              free(newFile->nome);
+              free(newFile);
               cista = 0;
             }
           
@@ -338,12 +341,15 @@ static void* threadF(void* arg) //funzione dei thread worker
             fprintf(stderr, "[Errore]: file %s gia aperto, non posso rimuoverlo\n", parametro);
             risposta = -1;
           } 
-          else
-          { //file esiste e lockato, deve essere rimosso
+          else//file esiste ed è aperto, deve essere rimosso
+          { 
             spazioOccupato-= tmpfileramtrash->length;
             risposta = removeFromQueue(&queueFiles, esiste);
             fprintf(stderr, "[Comando Rimozione]: file rimosso %s Successo \n", parametro);
-             
+            free(tmpfileramtrash->nome);
+            if(tmpfileramtrash->buffer != NULL)
+              free(tmpfileramtrash->buffer);
+            free(tmpfileramtrash); 
           }
           
           Pthread_mutex_unlock(&mutexQueueFiles);
@@ -533,8 +539,10 @@ static void* threadF(void* arg) //funzione dei thread worker
     FD_SET(connfd, &set);
     //fprintf(stderr, "num thread %d, connfd %ld\n", *numThread, connfd);
     SYSCALL_EXIT("writen", notused, writen(p[numThread][1], "vai", 3), "write", "");
+    free(tmp->parametro);
+    free(tmp);
   }
-    
+  fprintf(stderr, "[Thread (%d)]: ho finito \n", numThread);  
   return NULL;
 }
 
@@ -587,7 +595,6 @@ int main(int argc, char* argv[])
       fprintf(stderr, "[Errore Server]: devi passare il path di un file config adeguato\n");
       exit(EXIT_FAILURE); 
    }
-  
   parserFile(argv[1]);      //prendo le informazioni dal file config.txt
   
   
@@ -625,8 +632,6 @@ int main(int argc, char* argv[])
   ec_null((psegnali = (int*)malloc(sizeof(int) * 2)), "malloc");
   ec_meno1((pipe(psegnali)), "pipe");
   
-  cleanup();    //ripulisco vecchie connessioni 
-  atexit(cleanup);
   queueClient = initQueue(); //coda dei file descriptor dei client che provano a connettersi
   queueFiles = initQueue();
 
@@ -753,34 +758,36 @@ int main(int argc, char* argv[])
         FD_CLR(connfd, &set);//levo il bit nella set perchè sto gestendo la richiesta di connfd
         
         msg_t str;
-        int err = readn(connfd, &str.len, sizeof(int));
+        int err = readn(connfd, &str.len, sizeof(int));//leggo la lunghezza del messaggio nel socket
         
-        if(err == 0 || err == -1) //socket vuoto
+        if(err == 0 || err == -1) //se il socket fosse vuoto
         {
-          fprintf(stderr, "client disconnesso\n");
-          nattivi--;
+          fprintf(stderr, "[Server]: Client disconnesso\n");
+          nattivi--;//cancello una connessione dal contatore delle connessioni attive
           FD_CLR(connfd, &set);//libero il bit sulla maschera per fare spazio e chiudo il socket
-          ec_meno1((close(connfd)), "close");
+          ec_meno1((close(connfd)), "close");//chiudo il socket per quel determinato client 
           
-          if (connfd == fdmax)
+          if (connfd == fdmax)//ricalcolo il massimo fdMax
             fdmax = updatemax(set, fdmax);
 
 
-          if(nattivi > 0) 
+          if(nattivi > 0)//controllo il numero dei client ancora connessi
           {
             if(flagSigHup)
-              fprintf(stderr, "ci sono connessioni attive, nattivi %d\n", nattivi);
+              fprintf(stderr, "[Problema]: Ci sono connessioni attive N = %d\n", nattivi); //errore in caso che qualche client non termini la propria connessione
           } 
           else 
           {
-            if(flagSigHup)
-              fprintf(stderr, "Non ci sono altre connessioni\n");
             if(flagSigHup) 
             {
-              flagSigInt = 1; //a questo punto si deve comportare come avesse ricevuto un sigint
-              if(pthread_cond_broadcast(&condQueueClient) != 0) { perror("pthread_cond_broadcast"); exit(EXIT_FAILURE); }
+              fprintf(stderr, "[Server]: Non ci sono connessioni attive\n"); //successo
+              flagSigInt = 1; //riutilizzo il flagSigInt visto che ho un comportamento similare 
+              if(pthread_cond_broadcast(&condQueueClient) != 0) 
+              {
+                 perror("pthread_cond_broadcast");
+                  exit(EXIT_FAILURE); 
+              }
             }
-
           }
           continue;
         }
@@ -788,9 +795,8 @@ int main(int argc, char* argv[])
         
         //se effettivamente ho letto qualcosa nel socket identifico il comando da mettere in coda
         str.len = str.len - sizeof(char);
-        //leviamo il primo carattere del comando
-        SYSCALL_EXIT("readn", notused, readn(connfd, &str.comando, sizeof(char)), "read", "");
-        fprintf(stderr, "stampo il comando %c \n",str.comando);//leggiamo il flag del comando per esempio 'W'
+        //leviamo il primo carattere del comando dal conto della lunghezza
+        SYSCALL_EXIT("readn", notused, readn(connfd, &str.comando, sizeof(char)), "read", "");//leggiamo il flag del comando per esempio 'W'
         ec_null((str.arg = calloc((str.len), sizeof(char))), "calloc");
         
         SYSCALL_EXIT("readn", notused, readn(connfd, str.arg, (str.len)*sizeof(char)), "read", "");//leggiamo l'argomento del comando da mettere in coda
@@ -802,7 +808,8 @@ int main(int argc, char* argv[])
         cmdtmp->connfd = connfd;
         strcpy(cmdtmp->parametro, str.arg);
         cmdtmp->parametro[strlen(str.arg)] = '\0';
-
+        
+        free(str.arg);
         Pthread_mutex_lock(&mutexQueueClient);
         ec_meno1((push(&queueClient, cmdtmp)), "push");
         Pthread_mutex_unlock(&mutexQueueClient);
@@ -853,7 +860,6 @@ int main(int argc, char* argv[])
     }
   }
   cleanup();
-  atexit(cleanup);
 
 //stampo le statistiche
   fprintf(stdout, "\n\nStatistiche del server raggiunte:\n");
@@ -866,6 +872,7 @@ int main(int argc, char* argv[])
 
   free(arrtmp); //free array numero thread
   free(t); //free array di thread
+  free(s); //free delle statistiche 
 
   //free della coda dei file
   fileRam* tmpcodafile;
