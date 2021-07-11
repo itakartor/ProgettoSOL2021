@@ -1,6 +1,6 @@
 //inizio
-spazio 200000
-numeroFile 100
+spazio 1048576
+numeroFile 10
 sockName mysock.sk
-numWorkers 5
+numWorkers 4
 //fine

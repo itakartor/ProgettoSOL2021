@@ -47,7 +47,7 @@ Statistiche *s;
 
 fd_set set;         //maschera dei bit
 Queue *queueClient; //coda dei client che fanno richieste
-Queue *queueFiles; //coda dei file memorizzati
+Queue *queueFiles;  //coda dei file memorizzati
 
 int spazioOccupato = 0;
 
@@ -211,9 +211,8 @@ static void* threadF(void* arg) //funzione dei thread worker
       { 
         fprintf(stdout, "[Comando Scrittura]: %s Ricevuto\n", parametro);
         Pthread_mutex_lock(&mutexQueueFiles);
-        //fprintf(stderr, "ho preso la lock\n");
+
         Node* esiste = fileExistsServer(queueFiles, parametro);
-        //fprintf(stderr, "sto per lasciare la lock\n");
         Pthread_mutex_unlock(&mutexQueueFiles);
         int cista = 1;//il file ci sta inizialmente
         int risposta = 0;
@@ -240,10 +239,12 @@ static void* threadF(void* arg) //funzione dei thread worker
             if(lentmp > spazio || lentmp + newFile->length > spazio) //in caso che stia creando un file troppo grande o stia scrivendo troppe cose sul file per la capienza del server 
             {
               fprintf(stderr, "[Errore]:file %s troppo grande (%ld) (capienza massima %d)\n", newFile->nome, newFile->length + lentmp, spazio);
-                //vado a scrivere nel socket che il file non ci sta
+              //vado a scrivere nel socket che il file non ci sta
               if(lentmp > spazio)
-                removeFromQueue(&queueFiles, esiste);//rimuovo il file dalla coda perchè ho gia inserito il file
-              
+                if(removeFromQueue(&queueFiles, esiste) != 1)//rimuovo il file dalla coda perchè ho gia inserito il file
+                {
+                  fprintf(stderr,"[Errore]: Il file %s non è stato rimosso",newFile->nome);
+                }
               //libero il file tanto non mi servirà perchè non posso inserirlo 
               free(newFile->nome);
               Pthread_mutex_unlock(&newFile->lock);
@@ -378,7 +379,6 @@ static void* threadF(void* arg) //funzione dei thread worker
            { 
               len = filetmp->length;
               char* buf = filetmp->buffer;
-              //fprintf(stderr, "sto inserendo %d\n", len);
               SYSCALL_EXIT("writen", notused, writen(connfd, &len, sizeof(int)), "write", "");
               SYSCALL_EXIT("writen", notused, writen(connfd, buf, len * sizeof(char)), "write", "");
               fprintf(stderr, "[Comando lettura]: %s Successo\n", parametro);

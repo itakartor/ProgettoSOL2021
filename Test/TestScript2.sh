@@ -25,7 +25,7 @@ clientConf[4]=$confClient5
 
 #creazione shell in bg con valgrind per ottenerne il PID tramite $!
 rm mysock.sk
-valgrind --leak-check=full --show-leak-kinds=all ./server configs/config1.txt &
+valgrind --leak-check=full --show-leak-kinds=all ./server configs/config2.txt &
 #./server configs/config2.txt &
 serverPID=$!
 
