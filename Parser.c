@@ -179,7 +179,7 @@ int arg_R(char* argv[],int argc,Queue** q)
                 }
                 else 
                 {       //non è un numero né un parametro, deve dare errore
-                        fprintf(stderr, "[PARSER]: numero richiesto\n");
+                        fprintf(stderr, "[PARSER]: numero richiesto \n");
                         exit(EXIT_FAILURE);
                 }
         }

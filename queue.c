@@ -75,8 +75,8 @@ void insert(Queue **q, char cmd, char* name, int n) { //crea il NodoComando e lo
   new->cmd = cmd;
   if(name != NULL)
   {
-    new->name = malloc(sizeof(char)*strlen(name)); // abbiamo messo una malloc e la strcpy
-    strncpy(new->name,name,strlen(name));
+    new->name = malloc(sizeof(char)*(strlen(name)+1)); // abbiamo messo una malloc e la strcpy
+    strcpy(new->name,name);
   }
   else
   {
@@ -106,7 +106,7 @@ void* pop(Queue **q)//restituisce la testa e la rimuove dalla queue
   }
 }
 
-void printQueue(Queue *q) {
+void printQueueNodoComando(Queue *q) {
   Node* tmp = q->head;
   NodoComando *no = NULL;
   while(tmp != NULL) {

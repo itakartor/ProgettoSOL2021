@@ -30,8 +30,6 @@ typedef struct _Queue {
     Node*             head;
     Node*             tail;
     unsigned long       len;
-    pthread_mutex_t     lock;
-    pthread_cond_t      cond;
 } Queue;
 
 typedef struct _file {
@@ -44,13 +42,17 @@ typedef struct _file {
 
 Queue* initQueue();
 void* pop(Queue **q);
-void printQueue(Queue *q);
+void* pop2(Queue **q);
+
+void printQueueNodoComando(Queue *q);
+void printQueueFiles(Queue *q);
+
 int push(Queue **q, void* el);
 int pushTesta(Queue **q, void* el);
 void insert(Queue **q, char cmd, char* name, int n);
-void printQueueFiles(Queue *q);
+
 int removeFromQueue(Queue **q, Node* toDelete);
 Node* fileExistsServer(Queue *q, char* nomefile);
 void* returnFirstEl(Queue *q);
-void* pop2(Queue **q);
+
 #endif

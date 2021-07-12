@@ -10,7 +10,7 @@ fi
 saveDir=$1
 commonConf="-f mysock.sk -t 200 -p"
 #configurazioni di clients
-confClient1="$commonConf -w ./Test "
+confClient1="$commonConf -w .,3 "
 confClient2="$commonConf -W Parser.c,queue.c"
 confClient3="$commonConf -d $saveDir -r queue.c"
 confClient4="$commonConf -d $saveDir -R 7"
@@ -37,7 +37,7 @@ if mkdir $saveDir;then
     for((i=0;$i < ${#clientConf[@]};i++));do
         nomeFile=$saveDir/outputClient$i.txt
         if touch $nomeFile;then
-        ./client ${clientConf[$i]} > $nomeFile & #redirigo output client sul file
+        ./client ${clientConf[$i]} &> $nomeFile & #redirigo output client sul file
         else
           echo 'Errore creazione file'
         fi

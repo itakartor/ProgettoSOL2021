@@ -25,7 +25,7 @@ clientConf[4]=$confClient5
 
 #creazione shell in bg con valgrind per ottenerne il PID tramite $!
 rm mysock.sk
-valgrind --leak-check=full --show-leak-kinds=all ./server configs/config2.txt &
+valgrind --leak-check=full --show-leak-kinds=all ./server configs/config2.txt >output.txt 2>&1 &
 #./server configs/config2.txt &
 serverPID=$!
 
@@ -37,7 +37,7 @@ if mkdir $saveDir;then
     for((i=0;$i < ${#clientConf[@]};i++));do
         nomeFile=$saveDir/outputClient$i.txt
         if touch $nomeFile;then
-        ./client ${clientConf[$i]} > $nomeFile & #redirigo output client sul file
+            valgrind --leak-check=full --show-leak-kinds=all ./client ${clientConf[$i]} > $nomeFile & #redirigo output client sul file
         else
           echo 'Errore creazione file'
         fi

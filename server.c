@@ -278,6 +278,10 @@ static void* threadF(void* arg) //funzione dei thread worker
                 }
                 fprintf(stderr, "[Problema]: Ho eliminato il file %s dal server\n", fileramtmptrash->nome);
                 spazioOccupato-=fileramtmptrash->length;
+                free(fileramtmptrash->nome);
+                if(fileramtmptrash->buffer != NULL)
+                  free(fileramtmptrash->buffer);
+                free(fileramtmptrash);
               }
               //sto aggiungendo il file perchè c'è abbastanza spazio 
               spazioOccupato+=lentmp;//aggiorno lo spazio occupato
@@ -298,6 +302,7 @@ static void* threadF(void* arg) //funzione dei thread worker
                 for(int i = 0; i < lentmp; i++) //aggiunta in append
                   newFile->buffer[i + newFile->length] = ContenutoFile[i];
                 newFile->length+=lentmp;
+                free(ContenutoFile);
               }
               
               risposta = 0;//successo  
@@ -757,7 +762,7 @@ int main(int argc, char* argv[])
         }
           
         FD_CLR(connfd, &set);//levo il bit nella set perchè sto gestendo la richiesta di connfd
-        
+        //struttura di supporto per la lettura del socket
         msg_t str;
         int err = readn(connfd, &str.len, sizeof(int));//leggo la lunghezza del messaggio nel socket
         
@@ -766,7 +771,7 @@ int main(int argc, char* argv[])
           fprintf(stderr, "[Server]: Client disconnesso\n");
           nattivi--;//cancello una connessione dal contatore delle connessioni attive
           FD_CLR(connfd, &set);//libero il bit sulla maschera per fare spazio e chiudo il socket
-          ec_meno1((close(connfd)), "close");//chiudo il socket per quel determinato client 
+          ec_meno1((close(connfd)), "[close]");//chiudo il socket per quel determinato client 
           
           if (connfd == fdmax)//ricalcolo il massimo fdMax
             fdmax = updatemax(set, fdmax);
@@ -785,7 +790,7 @@ int main(int argc, char* argv[])
               flagSigInt = 1; //riutilizzo il flagSigInt visto che ho un comportamento similare 
               if(pthread_cond_broadcast(&condQueueClient) != 0) 
               {
-                 perror("pthread_cond_broadcast");
+                 perror("[pthread_cond_broadcast]");
                   exit(EXIT_FAILURE); 
               }
             }

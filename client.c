@@ -28,7 +28,7 @@
 
 #define MAXBUFFER 1000
 #define MAXSTRING 100
-#define MAXPATH 1024
+#define MAXPATH 4096
 #define SOCKNAME "mysock"
 #define MAXLENNUM 10
 #define O_CREATE 1
@@ -356,19 +356,19 @@ int readNFiles(int NumFile, const char* dirname) //devo leggere NumFile file
     return -1;
   }
   free(ntmp);
-
+    
   int notused;
   SYSCALL_EXIT("readn", notused, readn(sockfd, &NumFile, sizeof(int)), "read", "");//leggo dal socket del server il numero di file da leggere
-  int lenpathtmp;                                                                  //visto che potrebbero essere meno di quelli dichiarati dal parametro NumFile
+  int lenpathtmp;                                                               //visto che potrebbero essere meno di quelli dichiarati dal parametro NumFile
   char** arr_buf; //tengo traccia dei path dei file per poi leggerli in un secondo momento
   ec_null((arr_buf = malloc(sizeof(char*) * NumFile)), "malloc");
   for(int i = 0; i < NumFile; i++) //per ogni file da leggere dal server
   { 
     SYSCALL_EXIT("readn", notused, readn(sockfd, &lenpathtmp, sizeof(int)), "read", "");
-    ec_null((arr_buf[i] = malloc(sizeof(char) * lenpathtmp)), "malloc");//passaggio in più inutile
+    ec_null((arr_buf[i] = malloc(sizeof(char) * (lenpathtmp + 1))), "malloc");
     SYSCALL_EXIT("readn", notused, readn(sockfd, arr_buf[i], lenpathtmp * sizeof(char)), "read", "");
+    arr_buf[i][lenpathtmp] =  '\0';
   } 
-  
   //prima mi ricavo tutti i nomi dei file da leggere e poi li leggo per evitare conflitti
   //nelle scritture/letture dei socket
   
@@ -466,10 +466,6 @@ int writeFile(const char* pathname) //scrivo un file nel server
   } 
   else//se non ci sono problemi durante la creazione del file o l'apertura
   {
-    char *buffer = NULL;
-    lenBuf = strlen(pathname) + 2; //+2 per il comando e il terminatore
-    ec_null((buffer = realloc(buffer, lenBuf * sizeof(char))), "realloc");
-
     //copiatura del file per trasformarlo in una info volatile
     struct stat info;
     ec_meno1((stat(pathname, &info)), "stat");//creo lo stat
@@ -673,16 +669,12 @@ int visitaRicorsiva(char* name, int *n, Queue **q)//name è il nome del path e n
   return 0;
 }
 
-static void SigPipe()//handler del messaggio di caduta del server
-{
-  fprintf(stdout, "[Errore]: Il server mi ha disconnesso\n");
-}
-int main(int argc, char *argv[]) 
+int main(int argc, char *argv[]) //13 errno
 {
   //gestione segnale SigPipe per l'interruzione improvvisa
   struct sigaction sapipe;
   memset(&sapipe, 0, sizeof(struct sigaction));
-  sapipe.sa_handler = SigPipe;//SIG_IGN
+  sapipe.sa_handler = SIG_IGN;//SIG_IGN
   sigaction(SIGPIPE, &sapipe, NULL);
 
   Queue *QueueParser = parser(argv,argc); //coda delle operazioni
@@ -701,7 +693,7 @@ int main(int argc, char *argv[])
     NodoComando *tmp = pop(&QueueParser); //prelevo un comando
     nanosleep(&abstime, NULL);
      if(verbose)
-      fprintf(stdout, "[Lettura Comando]: '%c' - %s in corso\n", tmp->cmd, tmp->name);
+      fprintf(stdout, "[Lettura Comando]: '%c' - %s - %d in corso\n", tmp->cmd, tmp->name, tmp->n);
     
     if(tmp->cmd == 'w') //fa una richiesta speciale in modo ricorsivo sfruttando il comando W
     { 
@@ -710,24 +702,28 @@ int main(int argc, char *argv[])
       
       if(strcmp(tmp->name, ".") == 0)//se passo come dir "." metto il path reale
       {
+        free(tmp->name);
         ec_null((tmp->name = malloc(sizeof(char) * MAXPATH)), "malloc");
         ec_null((getcwd(tmp->name, MAXPATH)), "getcwd");
       }
       if(visitaRicorsiva(tmp->name, &(tmp->n), &QueueParser) == -1) 
-        return -1;//però metto n=-1 per evitare il caso in cui n si decrementa fino a 0
-      free(tmp->name);
+      {
+        free(tmp->name);
+        free(tmp);
+        return -1;
+      }//però metto n=-1 per evitare il caso in cui n si decrementa fino a 0
     } 
     else//tutti gli altri casi tranne w
     {
       if(EseguiComandoClient(tmp) == -1)
-        fprintf(stderr,"[Errore]: comando %c con parametro %s Fallito \n",tmp->cmd,tmp->name);
-        
-        free(tmp->name);
-        free(tmp);
+        fprintf(stderr,"[Errore]: comando %c con parametro %s Fallito \n",tmp->cmd,tmp->name);  
     }
-      
+      free(tmp->name);
+      free(tmp);
   }
   ec_meno1((closeConnection(socknameconfig)), "closeConnection");//chiusura della connessione con il server
+  free(socknameconfig);
+  free(savefiledir);
   free(QueueParser);
   
   return 0;

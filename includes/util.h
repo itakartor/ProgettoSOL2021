@@ -1,10 +1,11 @@
-#define SYSCALL_EXIT(name, r, sc, str, ...)	\
-    if ((r=sc) == -1) {				\
-	perror(#name);				\
-	int errno_copy = errno;			\
-	exit(errno_copy);			\
-    }
-
+ #define SYSCALL_EXIT(name, r, sc, str, ...) \
+    if ((r=sc) == -1){  \
+    if(errno == EPIPE)  \
+        fprintf(stderr,"[Errore]: Il server mi ha disconnesso\n"); \
+    perror(#name);  \
+    int errno_copy = errno; \
+    exit(errno_copy);       \
+}
 #define ec_meno1(c, s) if((c) == -1){ perror(s); exit(EXIT_FAILURE); }
 #define neq_zero(c, s) if((c) != 0){ perror(s); exit(EXIT_FAILURE); }
 #define ec_null(c, s) if((c) == NULL) { perror(s); exit(EXIT_FAILURE); }
