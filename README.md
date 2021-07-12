@@ -1,1 +1,0 @@
-# ProgettoSOL2021

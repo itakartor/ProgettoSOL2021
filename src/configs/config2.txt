@@ -1,0 +1,6 @@
+//inizio
+spazio 1048576
+numeroFile 10
+sockName mysock.sk
+numWorkers 4
+//fine
