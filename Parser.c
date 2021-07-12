@@ -183,6 +183,7 @@ int arg_R(char* argv[],int argc,Queue** q)
                         exit(EXIT_FAILURE);
                 }
         }
+        free(nextstring);
         seenR = 1;
         insert(q, 'R', NULL, nfacoltativo);
         return 0;    

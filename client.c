@@ -304,7 +304,7 @@ int readFile(const char* pathname, void** buf, size_t* size)//leggo il file al p
     *size = 0;
     return -1; //errore o file inesistente
   } 
-  else//ho letto un n>0
+  else//ho letto un len>0
   {
     *size = len;
     ec_null((*buf = malloc(sizeof(char) * (*size))), "malloc");//alloco lo spazio del buffer per il contenuto del file
@@ -347,12 +347,14 @@ int readNFiles(int NumFile, const char* dirname) //devo leggere NumFile file
   if(sprintf(ntmp, "%d", NumFile) < 0)//memorizzo il numero in ntmp come char 
   {
     perror("[Snprintf]");
+    free(ntmp);
     return -1;
   }
   if(writeCMD(ntmp, 'R') == -1) 
   {
     errno = EPERM;
     perror("[writeCMD]");
+    free(ntmp);
     return -1;
   }
   free(ntmp);
@@ -371,8 +373,8 @@ int readNFiles(int NumFile, const char* dirname) //devo leggere NumFile file
   } 
   //prima mi ricavo tutti i nomi dei file da leggere e poi li leggo per evitare conflitti
   //nelle scritture/letture dei socket
-  
-  for(int i = 0; i < NumFile; i++)//Ora leggo il contenuto dei file con i nomi ricavati nel arr_buf
+  int LimiteFile = NumFile;
+  for(int i = 0; i < LimiteFile; i++)//Ora leggo il contenuto dei file con i nomi ricavati nel arr_buf
   {
     void* buffile;
     size_t sizebufffile;
@@ -380,18 +382,24 @@ int readNFiles(int NumFile, const char* dirname) //devo leggere NumFile file
     {
       if(readFile(arr_buf[i], &buffile, &sizebufffile) == -1) //leggo un singolo file preso dall'array dei file
       {
-        return -1;//errore della lettura
+        fprintf(stderr, "[Errore]: Lettura %s Fallita\n", arr_buf[i]);
+        NumFile--;//errore della lettura
       }
-      char path[MAXPATH];//dichiaro un path 
+      else
+      {
+        char path[MAXPATH];//dichiaro un path 
       
-      if(snprintf(path, sizeof(path), "%s/%s", dirname, arr_buf[i]) < 0) 
-      { 
-        perror("[Snprintf]"); 
-        return -1; 
+        if(snprintf(path, sizeof(path), "%s/%s", dirname, arr_buf[i]) < 0) 
+        { 
+          perror("[Snprintf]"); 
+          return -1; 
         }
    
-      if(writeLocal(path, buffile, sizebufffile) == -1) { return -1; }//infine scrivo in append il contenuto del file
-      if(closeFile(arr_buf[i]) == -1) { return -1; }//infine chiudo il file
+        if(writeLocal(path, buffile, sizebufffile) == -1) { return -1; }//infine scrivo in append il contenuto del file
+        if(buffile != NULL)
+          free(buffile);
+      }
+      if(closeFile(arr_buf[i]) == -1) { return -1; }//infine chiudo il file     
     }
     else//errore dell'openFile
     {
@@ -651,9 +659,10 @@ int visitaRicorsiva(char* name, int *n, Queue **q)//name è il nome del path e n
           NodoComando *new;//vado a gestire il -w attraverso la chiamata -W
           ec_null((new = malloc(sizeof(NodoComando))), "malloc");
           new->cmd = 'W';
-          ec_null((new->name = malloc(sizeof(char) * (strlen(buffer)+1))), "malloc");
+          int lenBuf = strlen(buffer);
+          ec_null((new->name = malloc(sizeof(char) * (lenBuf+1))), "malloc");
           strcpy(new->name, buffer);
-          new->name[strlen(buffer)] = '\0';
+          new->name[lenBuf] = '\0';
           new->n = 0;
           if(pushTesta(q, new) == -1)//devo assolutamente mettere in testa la richiesta per evitare che altre richieste seguenti falliscano per mancanza file
             return -1;
