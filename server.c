@@ -662,7 +662,7 @@ int main(int argc, char* argv[])
   }
 
   int listenfd; //codice identificato del listen per accettare le nuove connessioni
-  int nattivi = 0;
+  int NumConnessioniAttive = 0;//numero di connessioni attive
   SYSCALL_EXIT("socket", listenfd, socket(AF_UNIX, SOCK_STREAM, 0), "socket", "");
 
   struct sockaddr_un serv_addr;
@@ -718,7 +718,7 @@ int main(int argc, char* argv[])
         { 
           SYSCALL_EXIT("accept", connfd, accept(listenfd, (struct sockaddr*)NULL ,NULL), "accept", "");
           FD_SET(connfd, &set);  // aggiungo il descrittore al master set
-          nattivi++;
+          NumConnessioniAttive++;
           if(connfd > fdmax)
             fdmax = connfd;  // ricalcolo il massimo
           continue;
@@ -736,7 +736,7 @@ int main(int argc, char* argv[])
           char buftmp[10];
           //leggo dalla pipe 
           SYSCALL_EXIT("readn", notused, readn(connfd, buftmp, 9), "read", ""); //leggo dalla pipe dei segnali
-          if(flagSigInt == 1 || nattivi == 0)//se sono finite le richieste o se ho catturato un segnale
+          if(flagSigInt == 1 || NumConnessioniAttive == 0)//se sono finite le richieste o se ho catturato un segnale
           {
             flagSigInt = 1;
             if(pthread_cond_broadcast(&condQueueClient) != 0)//mando un broadcast per avvertire tutti i thread workers 
@@ -769,7 +769,7 @@ int main(int argc, char* argv[])
         if(err == 0 || err == -1) //se il socket fosse vuoto
         {
           fprintf(stderr, "[Server]: Client disconnesso\n");
-          nattivi--;//cancello una connessione dal contatore delle connessioni attive
+          NumConnessioniAttive--;//cancello una connessione dal contatore delle connessioni attive
           FD_CLR(connfd, &set);//libero il bit sulla maschera per fare spazio e chiudo il socket
           ec_meno1((close(connfd)), "[close]");//chiudo il socket per quel determinato client 
           
@@ -777,10 +777,10 @@ int main(int argc, char* argv[])
             fdmax = updatemax(set, fdmax);
 
 
-          if(nattivi > 0)//controllo il numero dei client ancora connessi
+          if(NumConnessioniAttive > 0)//controllo il numero dei client ancora connessi
           {
             if(flagSigHup)
-              fprintf(stderr, "[Problema]: Ci sono connessioni attive N = %d\n", nattivi); //errore in caso che qualche client non termini la propria connessione
+              fprintf(stderr, "[Problema]: Ci sono connessioni attive N = %d\n", NumConnessioniAttive); //errore in caso che qualche client non termini la propria connessione
           } 
           else 
           {
