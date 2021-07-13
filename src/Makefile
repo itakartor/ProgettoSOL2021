@@ -39,9 +39,6 @@ server: $(SERVER_DEPS)
 client: $(CLIENT_DEPS)
 		#make cleanall
 		$(CC) $(CFLAGS) $(CLIENT_DEPS) -o client $(FLAG_INCLUDE_DIR)
-
-
-
 test1:
 	chmod +x ./Test/TestScript1.sh
 	./Test/TestScript1.sh $(CLIENTOUTPUT_DIR1)

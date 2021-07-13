@@ -155,7 +155,6 @@ int writeCMD(const char* pathname, char cmd) //parte ricorrente per mandare il c
   }
   
   int notused;
-  char *buffer = NULL;
   int lenPath = strlen(pathname);
   char* Comando; //alloco la stringa per la stringa comando da mandare al server con terminatore
   ec_null((Comando = malloc(sizeof(char) * (lenPath + 2))), "malloc");//+2 -> +1 per il flag e +1 per il terminatore
