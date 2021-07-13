@@ -639,7 +639,7 @@ int visitaRicorsiva(char* name, int *n, Queue **q)//name è il nome del path e n
         
         if(snprintf(path, sizeof(path), "%s/%s", name, entry->d_name) < 0) //va a scrivere nel path l'entry->d_name che sto visitando
         {
-          perror("snprintf"); 
+          perror("[Snprintf]"); 
           return -1; 
         } 
         

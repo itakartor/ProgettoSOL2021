@@ -25,7 +25,8 @@
 //#define QUEUE_H_
 
 Queue* initQueue() { //inizializza una coda vuota
-  Queue *q = malloc(sizeof(Queue));
+  Queue *q;
+  ec_null((q = malloc(sizeof(Queue))), "malloc");
   q->head = NULL;
   q->tail = NULL;
   q->len = 0;
@@ -71,11 +72,12 @@ int pushTesta(Queue **q, void* el) { //inserimento in testa in una FIFO
 
 void insert(Queue **q, char cmd, char* name, int n) { //crea il NodoComando e lo mette nella coda
 
-  NodoComando *new = malloc(sizeof(NodoComando));
+  NodoComando *new;
+  ec_null((new = malloc(sizeof(NodoComando))), "malloc");
   new->cmd = cmd;
   if(name != NULL)
   {
-    new->name = malloc(sizeof(char)*(strlen(name)+1)); // abbiamo messo una malloc e la strcpy
+    ec_null((new->name = malloc(sizeof(char)*(strlen(name)+1))), "malloc");// abbiamo messo una malloc e la strcpy
     strcpy(new->name,name);
   }
   else
