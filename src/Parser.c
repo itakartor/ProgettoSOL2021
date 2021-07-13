@@ -185,7 +185,7 @@ int arg_R(char* argv[],int argc,Queue** q)
         }
         free(nextstring);
         seenR = 1;
-        insert(q, 'R', NULL, nfacoltativo);
+        insert(q, 'R', " ", nfacoltativo);
         return 0;    
 }
 int arg_d(char* optarg)
